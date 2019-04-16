@@ -53,8 +53,9 @@ def create_model(args):
     if args.init_ckp is not None:
         model = LandmarkNet(backbone_name=args.backbone, num_classes=args.init_num_classes)
         model.load_state_dict(torch.load(args.init_ckp))
-        if args.init_num_classes != num_classes:
-            model.logit = nn.Linear(model.ftr_num, num_classes)
+        if args.init_num_classes != args.num_classes:
+            model.logit = nn.Linear(model.ftr_num, args.num_classes)
+            model.name = 'LandmarkNet_{}_{}'.format(args.backbone, args.num_classes)
     else:
         model = LandmarkNet(backbone_name=args.backbone, num_classes=args.num_classes)
 

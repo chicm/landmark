@@ -116,7 +116,7 @@ class ImageDataset(data.Dataset):
         labels = torch.tensor([x[1] for x in batch])
         return imgs, labels
 
-def get_train_val_loaders(num_classes, batch_size=4, dev_mode=False, val_num=1000):
+def get_train_val_loaders(num_classes, batch_size=4, dev_mode=False, val_num=6000, val_batch_size=1024):
     classes, stoi = get_classes(num_classes)
 
     df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train_{}.csv'.format(num_classes)))
@@ -142,7 +142,7 @@ def get_train_val_loaders(num_classes, batch_size=4, dev_mode=False, val_num=100
     train_loader = data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=8, collate_fn=train_set.collate_fn, drop_last=True)
     train_loader.num = len(train_set)
 
-    val_loader = data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=val_set.collate_fn, drop_last=False)
+    val_loader = data.DataLoader(val_set, batch_size=val_batch_size, shuffle=False, num_workers=8, collate_fn=val_set.collate_fn, drop_last=False)
     val_loader.num = len(val_set)
 
     return train_loader, val_loader

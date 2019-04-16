@@ -18,6 +18,14 @@ from torch.nn import DataParallel
 
 MODEL_DIR = settings.MODEL_DIR
 
+#tmp_one_hot = torch.eye(50000)
+#tmp_one_hot.requires_grad = False
+
+#cls_w = torch.tensor(list(range(10000))).float()  / 10000 * 10 + 1
+#cls_w = cls_w.cuda()
+#c = nn.CrossEntropyLoss(weight=cls_w)
+c = nn.CrossEntropyLoss()
+
 def focal_loss(x, y):
     '''Focal loss.
 
@@ -35,18 +43,21 @@ def focal_loss(x, y):
     #t = t[:,1:]  # exclude background
     #t = Variable(t).cuda()  # [N,20]
 
-    t = torch.eye(7272).cuda()
-    t = t.index_select(0, y)
+    t = torch.eye(50000).cuda()
+    t = tmp_one_hot.index_select(0, y.cpu()).cuda()
 
     p = x.sigmoid()
     pt = p*t + (1-p)*(1-t)         # pt = p if t > 0 else 1-p
     w = alpha*t + (1-alpha)*(1-t)  # w = alpha if t > 0 else 1-alpha
     w = w * (1-pt).pow(gamma)
+    w = w.detach()
+    #w.requires_grad = False
     #return F.binary_cross_entropy_with_logits(x, t, w, size_average=False)
     return F.binary_cross_entropy_with_logits(x, t, w)
 
 def criterion(args, outputs, targets):
-    return nn.CrossEntropyLoss()(outputs, targets)
+    #return nn.CrossEntropyLoss()(outputs, targets) + focal_loss(outputs, targets) * 10
+    return c(outputs, targets)
     #num_preds = torch.sigmoid(num_output)*5
     #num_loss = F.mse_loss(num_output.squeeze(), num_target.float())
 
@@ -323,7 +334,8 @@ if __name__ == '__main__':
     parser.add_argument('--backbone', default='se_resnext50_32x4d', type=str, help='backbone')
     parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
     parser.add_argument('--min_lr', default=0.0001, type=float, help='min learning rate')
-    parser.add_argument('--batch_size', default=320, type=int, help='batch_size')
+    parser.add_argument('--batch_size', default=280, type=int, help='batch_size')
+    parser.add_argument('--val_batch_size', default=1024, type=int, help='batch_size')
     parser.add_argument('--start_epoch', default=0, type=int, help='start epoch')
     parser.add_argument('--iter_val', default=200, type=int, help='start epoch')
     parser.add_argument('--epochs', default=200, type=int, help='epoch')
@@ -331,10 +343,10 @@ if __name__ == '__main__':
     parser.add_argument('--lrs', default='plateau', choices=['cosine', 'plateau'], help='LR sceduler')
     parser.add_argument('--patience', default=6, type=int, help='lr scheduler patience')
     parser.add_argument('--factor', default=0.5, type=float, help='lr scheduler factor')
-    parser.add_argument('--t_max', default=12, type=int, help='lr scheduler patience')
+    parser.add_argument('--t_max', default=8, type=int, help='lr scheduler patience')
     parser.add_argument('--init_ckp', default=None, type=str, help='resume from checkpoint path')
-    parser.add_argument('--init_num_classes', type=int, default=1000, help='init num classes')
-    parser.add_argument('--num_classes', type=int, default=5000, help='init num classes')
+    parser.add_argument('--init_num_classes', type=int, default=50000, help='init num classes')
+    parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--val', action='store_true')
     parser.add_argument('--dev_mode', action='store_true')
     parser.add_argument('--focal_loss', action='store_true')
@@ -344,7 +356,7 @@ if __name__ == '__main__':
     parser.add_argument('--no_first_val', action='store_true')
     parser.add_argument('--always_save',action='store_true', help='alway save')
     parser.add_argument('--activation', choices=['softmax', 'sigmoid'], type=str, default='softmax', help='activation')
-    parser.add_argument('--val_num', default=4000, type=int, help='number of val data')
+    parser.add_argument('--val_num', default=6000, type=int, help='number of val data')
     #parser.add_argument('--img_sz', default=256, type=int, help='image size')
     
     args = parser.parse_args()
