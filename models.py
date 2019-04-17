@@ -7,6 +7,9 @@ import torch.optim as optim
 from net.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from net.senet import se_resnext50_32x4d, se_resnet50, senet154, se_resnet152, se_resnext101_32x4d, se_resnet101
 from net.densenet import densenet121, densenet161, densenet169, densenet201
+from net.nasnet import nasnetalarge
+from net.inceptionresnetv2 import inceptionresnetv2
+from net.inceptionv4 import inceptionv4
 import settings
 
 
@@ -14,15 +17,19 @@ class LandmarkNet(nn.Module):
     def __init__(self, backbone_name, num_classes=1000, pretrained=True):
         super(LandmarkNet, self).__init__()
         print('num_classes:', num_classes)
-        if backbone_name in ['se_resnext50_32x4d', 'se_resnext101_32x4d', 'se_resnet101', 'se_resnet50', 'senet154', 'se_resnet152']:
+        if backbone_name in ['se_resnext50_32x4d', 'se_resnext101_32x4d', 'se_resnet50', 'senet154', 'se_resnet152', 'nasnetmobile', 'mobilenet', 'nasnetalarge']:
             self.backbone = eval(backbone_name)()
         elif backbone_name in ['resnet34', 'resnet18', 'resnet50', 'resnet101', 'resnet152', 'densenet121', 'densenet161', 'densenet169', 'densenet201']:
             self.backbone = eval(backbone_name)(pretrained=pretrained)
         else:
             raise ValueError('unsupported backbone name {}'.format(backbone_name))
 
-        if backbone_name == 'resnet34':
+        if backbone_name in ['resnet18', 'resnet34']:
             ftr_num = 512
+        elif backbone_name =='nasnetmobile':
+            ftr_num = 1056
+        elif backbone_name == 'mobilenet':
+            ftr_num = 1280
         elif backbone_name == 'densenet161':
             ftr_num = 2208
         elif backbone_name == 'densenet121':
@@ -31,8 +38,18 @@ class LandmarkNet(nn.Module):
             ftr_num = 1664
         elif backbone_name == 'densenet201':
             ftr_num = 1920
+        elif backbone_name == 'nasnetalarge':
+            ftr_num = 4032
+        elif backbone_name in ['inceptionresnetv2', 'inceptionv4']:
+            ftr_num = 1536
+        elif backbone_name in ['dpn98', 'dpn92', 'dpn107', 'dpn131']:
+            ftr_num = 2688
+        elif backbone_name in ['bninception']:
+            ftr_num = 1024
         else:
-            ftr_num = 2048
+            ftr_num = 2048  # xception, res50, etc...
+
+        
         self.ftr_num = ftr_num
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.logit = nn.Linear(ftr_num, num_classes)

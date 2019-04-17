@@ -145,13 +145,13 @@ class ResNet(nn.Module):
         x = self.maxpool(x)
 
         x = self.layer1(x)
-        x = F.dropout2d(x, p=0.1)
+        x = F.dropout2d(x, p=0.1, training=self.training)
         x = self.layer2(x)
-        x = F.dropout2d(x, p=0.2)
+        x = F.dropout2d(x, p=0.2, training=self.training)
         x = self.layer3(x)
-        x = F.dropout2d(x, p=0.3)
+        x = F.dropout2d(x, p=0.3, training=self.training)
         x = self.layer4(x)
-        x = F.dropout2d(x, p=0.4)
+        x = F.dropout2d(x, p=0.4, training=self.training)
         return x
 
     def forward(self, x):
@@ -159,7 +159,7 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
-        x = F.dropout(x, p=0.5)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = self.fc(x)
 
         return x
