@@ -46,7 +46,9 @@ def get_num_features(backbone_name):
     return ftr_num
 
 def create_imagenet_backbone(backbone_name, pretrained=True):
-    if backbone_name in ['se_resnext50_32x4d', 'se_resnext101_32x4d', 'se_resnet50', 'senet154', 'se_resnet152', 'nasnetmobile', 'mobilenet', 'nasnetalarge']:
+    if backbone_name in [
+        'se_resnext50_32x4d', 'se_resnext101_32x4d', 'se_resnet50', 'senet154', 'se_resnet101',
+        'se_resnet152', 'nasnetmobile', 'mobilenet', 'nasnetalarge']:
         backbone = eval(backbone_name)()
     elif backbone_name in ['resnet34', 'resnet18', 'resnet50', 'resnet101', 'resnet152', 'densenet121', 'densenet161', 'densenet169', 'densenet201']:
         backbone = eval(backbone_name)(pretrained=pretrained)
