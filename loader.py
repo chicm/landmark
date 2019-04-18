@@ -147,6 +147,20 @@ def get_train_val_loaders(num_classes, batch_size=4, dev_mode=False, val_num=600
 
     return train_loader, val_loader
 
+
+def get_train_all_loader(batch_size=4, dev_mode=False):
+    classes, stoi = get_classes(203094)
+    print('loading training data')
+    df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train.csv'))
+    if dev_mode:
+        df = df[:1000]
+    print('data size:', df.shape)
+    ds = ImageDataset(df, settings.TRAIN_IMG_DIR, stoi, train_mode=False)
+    loader = data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=ds.collate_fn, drop_last=False)
+    loader.num = len(df)
+
+    return loader
+
 def get_test_loader(num_classes, batch_size=1024, dev_mode=False):
     classes, stoi = get_classes(num_classes)
 
