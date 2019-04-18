@@ -32,18 +32,19 @@ def gen_train_vector(args):
     quantizer = faiss.IndexFlatL2(d)
     index = faiss.IndexIVFFlat(quantizer, d, nlist, faiss.METRIC_L2)
 
-    outputs = None
+    outputs = []
     with torch.no_grad():
         for i, (x, label) in tqdm(enumerate(train_all_loader), total=train_all_loader.num//args.batch_size):
             x = x.cuda()
             output = model(x)
             #index.add(output.cpu().numpy())
-            if outputs is None:
-                outputs = output.cpu()
-            else:
-                outputs = torch.cat([outputs, output.cpu()], 0)
+            #if outputs is None:
+            #    outputs = output.cpu()
+            #else:
+            #    outputs = torch.cat([outputs, output.cpu()], 0)
             #print('{}/{}'.format(args.batch_size*(i+1), train_all_loader.num), end='\r')
-    xb = outputs.numpy()
+            outputs.append(output.cpu())
+    xb = torch.cat(outputs, 0).numpy()
     print('training index')
     bg = time.time()
     index.train(xb)
