@@ -97,16 +97,25 @@ def load_search_ivf():
     print('I:', I)
 
 def load_search_ivf_2():
+    ngpus = faiss.get_num_gpus()
+
+    print("number of GPUs:", ngpus)
+
     print('loading')
     index = faiss.read_index(os.path.join(settings.VECTOR_DIR, 'FeatureNet_se_resnext50_32x4d.index'))
+
+    #gpu_index = faiss.index_cpu_to_all_gpus(  # build the index
+    #    index
+    #)
+
     np.random.seed(1234)
-    q = np.random.random((1, 2048)).astype('float32')
+    q = np.random.random((2000, 2048)).astype('float32')
     bg = time.time()
     print('searching...')
     D, I = index.search(q, 10)
-    print('time:', time.time() - bg)
-    print('D:', D)
-    print('I:', I)
+    print('search time:', time.time() - bg)
+    print('D:', D.shape)
+    print('I:', I.shape)
 
 if __name__ == '__main__':
     #save_vectors()

@@ -56,7 +56,7 @@ def img_augment(p=.8):
     ], p=p)
 
 class ImageDataset(data.Dataset):
-    def __init__(self, df, img_dir, stoi, train_mode=True, test_data=False):
+    def __init__(self, df, img_dir, stoi=None, train_mode=True, test_data=False):
         self.input_size = 256
         self.df = df
         self.img_dir = img_dir
@@ -161,13 +161,13 @@ def get_train_all_loader(batch_size=4, dev_mode=False):
 
     return loader
 
-def get_test_loader(num_classes, batch_size=1024, dev_mode=False):
-    classes, stoi = get_classes(num_classes)
+def get_test_loader(batch_size=1024, dev_mode=False):
+    #classes, stoi = get_classes(num_classes)
 
     df = pd.read_csv(os.path.join(DATA_DIR, 'test', 'test.csv'))
     if dev_mode:
         df = df[:10]
-    test_set = ImageDataset(df, settings.TEST_IMG_DIR, stoi, train_mode=False, test_data=True)
+    test_set = ImageDataset(df, settings.TEST_IMG_DIR, stoi=None, train_mode=False, test_data=True)
     test_loader = data.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=test_set.collate_fn, drop_last=False)
     test_loader.num = len(test_set)
 

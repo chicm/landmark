@@ -255,7 +255,7 @@ def predict_softmax(args):
     model = model.cuda()
 
     model.eval()
-    test_loader = get_test_loader(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode)
+    test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
 
     preds = None
     scores = None
