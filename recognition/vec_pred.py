@@ -5,12 +5,13 @@ import argparse
 import torch
 from torch.nn import DataParallel
 from models import FeatureNet, create_model
-from loader import get_train_all_loader, get_test_loader
+from loader import get_train_all_loader, get_test_loader, get_retrieval_index_loader
 import faiss
 from tqdm import tqdm
 import time
 
 import settings
+import settings_retrieval
 
 def create_feature_model(args):
     args.predict = True
@@ -26,11 +27,22 @@ def create_feature_model(args):
     model.eval()
     return model
 
-def gen_train_vector(args):
+def build_train_index(args):
     model = create_feature_model(args)
 
     train_all_loader = get_train_all_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
+    index_fn = os.path.join(settings.VECTOR_DIR, '{}.index'.format(model.name))
+    build_index(args, model, train_all_loader, True, index_fn)
 
+def build_retrieval_index(args):
+    model = create_feature_model(args)
+
+    retrieval_index_loader = get_retrieval_index_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
+    index_fn = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval'.format(model.name))
+    build_index(args, model, retrieval_index_loader, False, index_fn)
+
+
+def build_index(args, model, loader, loader_labeled, index_file_name):
     #index = faiss.IndexFlatL2(2048)
     d = 2048
     nlist = 100
@@ -39,15 +51,12 @@ def gen_train_vector(args):
 
     outputs = []
     with torch.no_grad():
-        for i, (x, label) in tqdm(enumerate(train_all_loader), total=train_all_loader.num//args.batch_size):
-            x = x.cuda()
+        for batch in tqdm(loader, total=loader.num//args.batch_size):
+            if loader_labeled:
+                x = batch[0].cuda()
+            else:
+                x = batch.cuda()
             output = model(x)
-            #index.add(output.cpu().numpy())
-            #if outputs is None:
-            #    outputs = output.cpu()
-            #else:
-            #    outputs = torch.cat([outputs, output.cpu()], 0)
-            #print('{}/{}'.format(args.batch_size*(i+1), train_all_loader.num), end='\r')
             outputs.append(output.cpu())
     xb = torch.cat(outputs, 0).numpy()
     print('training index')
@@ -57,10 +66,10 @@ def gen_train_vector(args):
     print('train time: ', train_time)
     index.add(xb)
 
-    index_fn = os.path.join(settings.VECTOR_DIR, '{}.index'.format(model.name))
+    #index_fn = os.path.join(settings.VECTOR_DIR, '{}.index'.format(model.name))
     print('\ntotal indices: {}'.format(index.ntotal))
-    print('saving index: {}'.format(index_fn))
-    faiss.write_index(index, index_fn)
+    print('saving index: {}'.format(index_file_name))
+    faiss.write_index(index, index_file_name)
 
 def pred_by_vector_search(args):
     model = create_feature_model(args)
@@ -126,7 +135,8 @@ if __name__ == '__main__':
     parser.add_argument('--init_num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--dev_mode', action='store_true')
-    parser.add_argument('--gen', action='store_true')
+    parser.add_argument('--build_rec', action='store_true')
+    parser.add_argument('--build_ret', action='store_true')
     parser.add_argument('--ckp_name', type=str, default='best_pretrained.pth',help='check point file name')
     parser.add_argument('--sub_file', default='sub_vec1.csv', type=str)
     
@@ -134,8 +144,10 @@ if __name__ == '__main__':
     print(args)
     #test_model(args)
     #exit(1)
-    if args.gen:
-        gen_train_vector(args)
+    if args.build_rec:
+        build_train_index(args)
+    elif args.build_ret:
+        build_retrieval_index(args)
     else:
         pred_by_vector_search(args)
 

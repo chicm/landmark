@@ -6,6 +6,7 @@ import torch.utils.data as data
 from torchvision import datasets, models, transforms
 from PIL import Image
 import settings
+import settings_retrieval
 
 from albumentations import (
     HorizontalFlip, IAAPerspective, ShiftScaleRotate, CLAHE, RandomRotate90, RandomBrightnessContrast,
@@ -22,13 +23,15 @@ def get_classes(num_classes):
     stoi = { classes[i]: i for i in range(len(classes))}
     return classes, stoi
 
-def get_filename(img_id, img_dir, test_data=False):
+def get_filename(img_id, img_dir, test_data=False, flat=False):
     if test_data:
         for i in range(10):
             fn = os.path.join(img_dir, str(i), '{}.jpg'.format(img_id))
             if os.path.exists(fn):
                 return fn
         raise AssertionError('image not found: {}'.format(img_id))
+    elif flat:
+        return os.path.join(img_dir, '{}.jpg'.format(img_id))
     else:
         return os.path.join(img_dir, img_id[0], img_id[1], img_id[2], '{}.jpg'.format(img_id))
 
@@ -56,7 +59,7 @@ def img_augment(p=.8):
     ], p=p)
 
 class ImageDataset(data.Dataset):
-    def __init__(self, df, img_dir, stoi=None, train_mode=True, test_data=False):
+    def __init__(self, df, img_dir, stoi=None, train_mode=True, test_data=False, flat=False):
         self.input_size = 256
         self.df = df
         self.img_dir = img_dir
@@ -64,12 +67,15 @@ class ImageDataset(data.Dataset):
         self.train_mode = train_mode
         self.transforms = train_transforms
         self.test_data = test_data
+        self.flat = flat
 
     def __getitem__(self, index):
         row = self.df.iloc[index]
         try:
-            fn = get_filename(row['id'], self.img_dir, self.test_data)
+            fn = get_filename(row['id'], self.img_dir, self.test_data, self.flat)
         except AssertionError:
+            if self.flat:
+                raise
             return torch.zeros(3, self.input_size, self.input_size), 0
         #print(fn)
         
@@ -100,7 +106,9 @@ class ImageDataset(data.Dataset):
         #img[2, :,:,] = (img[2, :,:,] - mean[2]) / std[2]
         #img = torch.tensor(img)
         
-        if self.test_data:
+        if self.flat:
+            return img
+        elif self.test_data:
             return img, 1
         else:
             return img, self.stoi[row['landmark_id']]
@@ -109,12 +117,12 @@ class ImageDataset(data.Dataset):
         return len(self.df)
 
     def collate_fn(self, batch):
-        #if self.test_data:
-        #    return torch.stack(batch)
-        #else:
-        imgs = torch.stack([x[0] for x in batch])
-        labels = torch.tensor([x[1] for x in batch])
-        return imgs, labels
+        if self.flat:
+            return torch.stack(batch)
+        else:
+            imgs = torch.stack([x[0] for x in batch])
+            labels = torch.tensor([x[1] for x in batch])
+            return imgs, labels
 
 def get_train_val_loaders(num_classes, batch_size=4, dev_mode=False, val_num=6000, val_batch_size=1024):
     classes, stoi = get_classes(num_classes)
@@ -173,6 +181,16 @@ def get_test_loader(batch_size=1024, dev_mode=False):
 
     return test_loader
 
+def get_retrieval_index_loader(batch_size=1024, dev_mode=False):
+
+    df = pd.read_csv(os.path.join(settings_retrieval.DATA_DIR, 'index_clean.csv'))
+    if dev_mode:
+        df = df[:1000]
+    ds = ImageDataset(df, settings_retrieval.INDEX_IMG_DIR, stoi=None, train_mode=False, test_data=False, flat=True)
+    loader = data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=ds.collate_fn, drop_last=False)
+    loader.num = len(ds)
+
+    return loader
 
 def test_train_val_loader():
     train_loader, val_loader = get_train_val_loaders(dev_mode=True)
@@ -187,7 +205,12 @@ def test_test_loader():
         print(img.size(), img)
         print(found)
 
+def test_index_loader():
+    loader = get_retrieval_index_loader(batch_size=4, dev_mode=True)
+    for img in loader:
+        print(img.size(), img)
 
 if __name__ == '__main__':
-    test_train_val_loader()
+    #test_train_val_loader()
     #test_test_loader()
+    test_index_loader()
