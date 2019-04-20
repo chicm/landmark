@@ -19,6 +19,10 @@ def resize(filename):
 
     try:
         img = cv2.imread(src_filename)
+        if args.square:
+            H, W, c = img.shape
+            min_sz = min(H, W)
+            img = img[(H-min_sz)//2:(H+min_sz)//2, (W-min_sz)//2:(W+min_sz)//2, :]
         #print(img.shape)
         img = cv2.resize(img, (args.image_size, args.image_size))
         cv2.imwrite(tgt_filename, img)
@@ -31,6 +35,8 @@ if __name__ == '__main__':
     parser.add_argument('--src_dir', type=str, required=True)
     parser.add_argument('--tgt_dir', type=str, required=True)
     parser.add_argument('--image_size', type=int, default=256)
+    parser.add_argument('--square', action='store_true')
+    parser.add_argument('--dev_mode', action='store_true')
     args = parser.parse_args()
 
     cwd = os.getcwd()
@@ -39,6 +45,9 @@ if __name__ == '__main__':
     print(len(filenames))
     print(filenames[:10])
     os.chdir(cwd)
+
+    if args.dev_mode:
+        filenames = filenames[:10]
 
     pool = multiprocessing.Pool(processes=50)
     pool.map(resize, filenames)

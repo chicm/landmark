@@ -149,6 +149,11 @@ def train(args):
                 epoch, float(current_lr[0]), args.batch_size*(batch_idx+1), train_loader.num, loss.item(), train_loss/(batch_idx+1)), end='')
 
             if train_iter > 0 and train_iter % args.iter_val == 0:
+                if isinstance(model, DataParallel):
+                    torch.save(model.module.state_dict(), model_file+'_latest')
+                else:
+                    torch.save(model.state_dict(), model_file+'_latest')
+
                 top10_acc, top1_acc, total_loss = validate(args, model, val_loader)
                 
                 _save_ckp = ''
