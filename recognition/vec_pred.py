@@ -71,6 +71,9 @@ def build_index(args, model, loader, loader_labeled, index_file_name):
     print('saving index: {}'.format(index_file_name))
     faiss.write_index(index, index_file_name)
 
+#def pred_test_vectors()
+
+
 def pred_by_vector_search(args):
     model = create_feature_model(args)
 
@@ -127,6 +130,57 @@ def create_submission(args, predictions, scores, founds, outfile):
     meta.to_csv(outfile, index=False, columns=['id', 'landmarks'])
 
 
+
+def pred_retrieval(args):
+    model = create_feature_model(args)
+
+    test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
+
+    outputs = []
+    founds = []
+    with torch.no_grad():
+        for i, (x, found) in tqdm(enumerate(test_loader), total=test_loader.num//args.batch_size):
+            x = x.cuda()
+            output = model(x)
+
+            outputs.append(output.cpu())
+            founds.append(found.cpu())
+
+    xb = torch.cat(outputs, 0).numpy()
+    founds = torch.cat(founds, 0).numpy()
+    print(xb.shape, founds.shape)
+
+    index_fn = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval'.format(model.name))
+    print('loading index...')
+
+    index = faiss.read_index(index_fn)
+    print('searching...')
+    bg = time.time()
+    D, I = index.search(xb, 100)
+    print('search time:', time.time() - bg)
+
+    #top1_index_ids = I[:, 0].squeeze()
+    #print(pred_labels)
+    #scores = [0.5] * xb.shape[0]
+    
+    create_retrieval_submission(args, I, founds, args.sub_file)
+
+def create_retrieval_submission(args, I, founds, outfile):
+    df = pd.read_csv(os.path.join(settings_retrieval.DATA_DIR, 'index_clean.csv'))
+    meta = pd.read_csv(os.path.join(settings.DATA_DIR, 'test', 'test.csv'))  # use same test data as recognition
+
+    labels = [' '.join([str(i) for i in df.iloc[x].id.values]) for x in I]
+
+    for i in range(len(labels)):
+        if founds[i] == 0:
+            labels[i] = ''
+
+    if args.dev_mode:
+        meta = meta.iloc[:len(I)]  # for dev mode
+        print(labels[:4])
+    meta['images'] = labels
+    meta.to_csv(outfile, index=False, columns=['id', 'images'])
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Landmark detection')
     parser.add_argument('--backbone', default='se_resnext50_32x4d', type=str, help='backbone')
@@ -137,6 +191,7 @@ if __name__ == '__main__':
     parser.add_argument('--dev_mode', action='store_true')
     parser.add_argument('--build_rec', action='store_true')
     parser.add_argument('--build_ret', action='store_true')
+    parser.add_argument('--task', type=str, choices=['build_rec', 'build_ret', 'pred_rec', 'pred_ret'], required=True)
     parser.add_argument('--ckp_name', type=str, default='best_pretrained.pth',help='check point file name')
     parser.add_argument('--sub_file', default='sub_vec1.csv', type=str)
     
@@ -144,10 +199,14 @@ if __name__ == '__main__':
     print(args)
     #test_model(args)
     #exit(1)
-    if args.build_rec:
+    if args.task == 'build_rec':
         build_train_index(args)
-    elif args.build_ret:
+    elif args.task == 'build_ret':
         build_retrieval_index(args)
-    else:
+    elif args.task == 'pred_rec':
         pred_by_vector_search(args)
+    elif args.task == 'pred_ret':
+        pred_retrieval(args)
+    else:
+        pass
 

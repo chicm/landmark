@@ -42,7 +42,7 @@ def create_models_from_ckps(args):
 def ensemble_predict(args):
     models = create_models_from_ckps(args)
 
-    test_loader = get_test_loader(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode)
+    test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
 
     preds = None
     scores = None
@@ -110,7 +110,7 @@ def create_submission(args, predictions, scores, founds, outfile):
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Landmark detection')
-    parser.add_argument('--batch_size', default=1024, type=int, help='batch_size')
+    parser.add_argument('--batch_size', default=2048, type=int, help='batch_size')
     parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--val', action='store_true')
     parser.add_argument('--dev_mode', action='store_true')
