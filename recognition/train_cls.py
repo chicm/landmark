@@ -365,6 +365,7 @@ if __name__ == '__main__':
     parser.add_argument('--focal_loss', action='store_true')
     parser.add_argument('--ckp_name', type=str, default='best_pretrained.pth',help='check point file name')
     parser.add_argument('--sub_file', type=str, default='sub1.csv')
+    parser.add_argument('--suffix_name', type=str, default='LandmarkNet')
     parser.add_argument('--predict', action='store_true')
     parser.add_argument('--no_first_val', action='store_true')
     parser.add_argument('--always_save',action='store_true', help='alway save')

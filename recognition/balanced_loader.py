@@ -129,7 +129,7 @@ def get_balanced_train_val_loaders(num_classes, batch_size=4, dev_mode=False, va
     df_val = df.copy()
     df_val['img_list'] = df_val.img_list.map(lambda x: [x[0]])
 
-    df_val_classes = shuffle(classes)[:val_num]
+    df_val_classes = shuffle(classes, random_state=1234)[:val_num]
     df_val = df_val[df_val.landmark_id.isin(df_val_classes)]
 
     if dev_mode:

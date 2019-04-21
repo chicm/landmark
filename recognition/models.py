@@ -101,11 +101,82 @@ class FeatureNet(nn.Module):
 
         return global_feat
 
+class FeatureNetV2(nn.Module):
+    def __init__(self, backbone_name, num_classes=14952, cls_model=None, suffix_name='FeatureNetV2'):
+        super(FeatureNetV2, self).__init__()
+        if cls_model is None:
+            self.backbone = create_imagenet_backbone(backbone_name)
+        else:
+            self.backbone = cls_model.backbone
+        self.num_features = get_num_features(backbone_name)
+        self.name = '{}_{}'.format(suffix_name, backbone_name)
+
+        local_planes = 512
+        self.local_conv = nn.Conv2d(self.num_features, local_planes, 1)
+        self.local_bn = nn.BatchNorm2d(local_planes)
+        self.local_bn.bias.requires_grad_(False)  # no shift
+        self.bottleneck_g = nn.BatchNorm1d(self.num_features)
+        self.bottleneck_g.bias.requires_grad_(False) 
+
+        self.fc = nn.Linear(self.num_features, num_classes)
+        nn.init.normal_(self.fc.weight, std=0.001)
+        nn.init.constant_(self.fc.bias, 0)
+
+    def forward(self, x):
+        feat = self.backbone.features(x)
+        # global feat
+        global_feat = F.avg_pool2d(feat, feat.size()[2:])
+        global_feat = global_feat.view(global_feat.size(0), -1)
+        global_feat = F.dropout(global_feat, p=0.2, training=self.training)
+        global_feat = self.bottleneck_g(global_feat)
+        global_feat = l2_norm(global_feat)
+
+        print('global:', global_feat.size())
+        # local feat
+        local_feat = torch.mean(feat, -1, keepdim=True)
+        local_feat = self.local_bn(self.local_conv(local_feat))
+        local_feat = local_feat.squeeze(-1).permute(0, 2, 1)
+        local_feat = l2_norm(local_feat, axis=-1)
+
+        print('local:', local_feat.size())
+
+        out = self.fc(global_feat) * 16
+        return global_feat, local_feat, out
+
+    def freeze_bn(self):
+        for m in self.named_modules():
+            if "layer" in m[0]:
+                if isinstance(m[1], nn.BatchNorm2d):
+                    m[1].eval()
+
+    def freeze(self):
+        for param in self.basemodel.parameters():
+            param.requires_grad = False
+        if self.model_name.find('dpn98') > -1:
+            for param in self.basemodel.features[10:].parameters():
+                param.requires_grad = True
+        elif self.model_name.find('res') > -1 or self.model_name.find('senet154') > -1:
+            for param in self.basemodel.layer3.parameters():
+                param.requires_grad = True
+            for param in self.basemodel.layer4.parameters():
+                param.requires_grad = True
+        elif self.model_name.find('inceptionv4') > -1:
+            for param in self.basemodel.features[11:].parameters():
+                param.requires_grad = True
+        elif self.model_name.find('dense') > -1:
+            for param in self.basemodel.features[8:].parameters():
+                param.requires_grad = True
+    def getLoss(self, global_feat, local_feat, results, labels):
+        triple_loss = global_loss(TripletLoss(margin=0.3), global_feat, labels)[0] + \
+                      local_loss(TripletLoss(margin=0.3), local_feat, labels)[0]
+        #loss_ = sigmoid_loss(results, labels, topk=30)
+
+        self.loss = triple_loss + loss_
 
 def create_model(args):
-    suffix_name = 'LandmarkNet'
-    if args.balanced:
-        suffix_name = 'LandmarkNetB'
+    suffix_name = args.suffix_name #'LandmarkNet'
+    #if args.balanced:
+    #    suffix_name = 'LandmarkNetB'
     if args.init_ckp is not None:
         model = LandmarkNet(backbone_name=args.backbone, num_classes=args.init_num_classes, suffix_name=suffix_name)
         model.load_state_dict(torch.load(args.init_ckp))
@@ -149,10 +220,10 @@ def test():
 
 def test_feature_net():
     x = torch.randn(2, 3, 224, 224).cuda()
-    model = FeatureNet('se_resnet50')
+    model = FeatureNetV2('se_resnet50')
     model.cuda()
     y = model(x)
-    print(y.size())
+    #print(y.size())
     print(y)
 
 if __name__ == '__main__':
