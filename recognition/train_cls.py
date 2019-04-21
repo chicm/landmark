@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR, _LRScheduler, ReduceLROnPlateau
 import settings
 from loader import get_train_val_loaders, get_test_loader, get_classes
+from balanced_loader import get_balanced_train_val_loaders
 import cv2
 from models import LandmarkNet, create_model
 from torch.nn import DataParallel
@@ -104,7 +105,10 @@ def train(args):
         lr_scheduler = CosineAnnealingLR(optimizer, args.t_max, eta_min=args.min_lr)
     #ExponentialLR(optimizer, 0.9, last_epoch=-1) #CosineAnnealingLR(optimizer, 15, 1e-7) 
 
-    _, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_num=args.val_num)
+    if args.balanced:
+        _, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_num=args.val_num)
+    else:
+        _, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_num=args.val_num)
 
     best_top1_acc = 0.
 
@@ -127,7 +131,10 @@ def train(args):
     train_iter = 0
 
     for epoch in range(args.start_epoch, args.epochs):
-        train_loader, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_num=args.val_num)
+        if args.balanced:
+            train_loader, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_num=args.val_num)
+        else:
+            train_loader, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_num=args.val_num)
 
         train_loss = 0
 
@@ -354,6 +361,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--val', action='store_true')
     parser.add_argument('--dev_mode', action='store_true')
+    parser.add_argument('--balanced', action='store_true')
     parser.add_argument('--focal_loss', action='store_true')
     parser.add_argument('--ckp_name', type=str, default='best_pretrained.pth',help='check point file name')
     parser.add_argument('--sub_file', type=str, default='sub1.csv')
@@ -365,6 +373,8 @@ if __name__ == '__main__':
     #parser.add_argument('--img_sz', default=256, type=int, help='image size')
     
     args = parser.parse_args()
+    if args.balanced:
+        args.val_num = 10000
     print(args)
     #test_model(args)
     #exit(1)

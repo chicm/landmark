@@ -57,7 +57,7 @@ def create_imagenet_backbone(backbone_name, pretrained=True):
     return backbone
 
 class LandmarkNet(nn.Module):
-    def __init__(self, backbone_name, num_classes=1000, pretrained=True):
+    def __init__(self, backbone_name, num_classes=1000, pretrained=True, suffix_name='LandmarkNet'):
         super(LandmarkNet, self).__init__()
         print('num_classes:', num_classes)
         self.backbone = create_imagenet_backbone(backbone_name)
@@ -66,7 +66,7 @@ class LandmarkNet(nn.Module):
         self.ftr_num = ftr_num
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.logit = nn.Linear(ftr_num, num_classes)
-        self.name = 'LandmarkNet_{}_{}'.format(backbone_name, num_classes)
+        self.name = '{}_{}_{}'.format(suffix_name, backbone_name, num_classes)
 
     def logits(self, x):
         x = self.avg_pool(x)
@@ -79,14 +79,14 @@ class LandmarkNet(nn.Module):
         return self.logits(x)
 
 class FeatureNet(nn.Module):
-    def __init__(self, backbone_name, cls_model=None):
+    def __init__(self, backbone_name, cls_model=None, suffix_name='FeatureNet'):
         super(FeatureNet, self).__init__()
         if cls_model is None:
             self.backbone = create_imagenet_backbone(backbone_name)
         else:
             self.backbone = cls_model.backbone
         self.num_features = get_num_features(backbone_name)
-        self.name = 'FeatureNet_{}'.format(backbone_name)
+        self.name = '{}_{}'.format(suffix_name, backbone_name)
 
     def forward(self, x):
         feat = self.backbone.features(x)
@@ -103,14 +103,17 @@ class FeatureNet(nn.Module):
 
 
 def create_model(args):
+    suffix_name = 'LandmarkNet'
+    if args.balanced:
+        suffix_name = 'LandmarkNetB'
     if args.init_ckp is not None:
-        model = LandmarkNet(backbone_name=args.backbone, num_classes=args.init_num_classes)
+        model = LandmarkNet(backbone_name=args.backbone, num_classes=args.init_num_classes, suffix_name=suffix_name)
         model.load_state_dict(torch.load(args.init_ckp))
         if args.init_num_classes != args.num_classes:
             model.logit = nn.Linear(model.ftr_num, args.num_classes)
-            model.name = 'LandmarkNet_{}_{}'.format(args.backbone, args.num_classes)
+            model.name = '{}_{}_{}'.format(suffix_name, args.backbone, args.num_classes)
     else:
-        model = LandmarkNet(backbone_name=args.backbone, num_classes=args.num_classes)
+        model = LandmarkNet(backbone_name=args.backbone, num_classes=args.num_classes, suffix_name=suffix_name)
 
     model_file = os.path.join(settings.MODEL_DIR, model.name, args.ckp_name)
 
