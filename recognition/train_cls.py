@@ -106,9 +106,9 @@ def train(args):
     #ExponentialLR(optimizer, 0.9, last_epoch=-1) #CosineAnnealingLR(optimizer, 15, 1e-7) 
 
     if args.balanced:
-        _, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_num=args.val_num)
+        _, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num)
     else:
-        _, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_num=args.val_num)
+        _, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num)
 
     best_top1_acc = 0.
 
@@ -132,9 +132,9 @@ def train(args):
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.balanced:
-            train_loader, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_num=args.val_num)
+            train_loader, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
         else:
-            train_loader, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_num=args.val_num)
+            train_loader, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
 
         train_loss = 0
 
