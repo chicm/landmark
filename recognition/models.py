@@ -10,7 +10,12 @@ from net.densenet import densenet121, densenet161, densenet169, densenet201
 from net.nasnet import nasnetalarge
 from net.inceptionresnetv2 import inceptionresnetv2
 from net.inceptionv4 import inceptionv4
+
+from triplet_loss import global_loss, local_loss, TripletLoss
+
 import settings
+
+c = nn.CrossEntropyLoss()
 
 def l2_norm(input,axis=1):
     norm = torch.norm(input,2,axis,True)
@@ -131,16 +136,17 @@ class FeatureNetV2(nn.Module):
         global_feat = self.bottleneck_g(global_feat)
         global_feat = l2_norm(global_feat)
 
-        print('global:', global_feat.size())
+        #print('global:', global_feat.size())
         # local feat
         local_feat = torch.mean(feat, -1, keepdim=True)
         local_feat = self.local_bn(self.local_conv(local_feat))
         local_feat = local_feat.squeeze(-1).permute(0, 2, 1)
         local_feat = l2_norm(local_feat, axis=-1)
 
-        print('local:', local_feat.size())
+        #print('local:', local_feat.size())
 
         out = self.fc(global_feat) * 16
+        #print('out:', out.max(), out.mean(), out.min(), out.std())
         return global_feat, local_feat, out
 
     def freeze_bn(self):
@@ -166,12 +172,14 @@ class FeatureNetV2(nn.Module):
         elif self.model_name.find('dense') > -1:
             for param in self.basemodel.features[8:].parameters():
                 param.requires_grad = True
+
     def getLoss(self, global_feat, local_feat, results, labels):
         triple_loss = global_loss(TripletLoss(margin=0.3), global_feat, labels)[0] + \
                       local_loss(TripletLoss(margin=0.3), local_feat, labels)[0]
-        #loss_ = sigmoid_loss(results, labels, topk=30)
+        celoss = c(results, labels)
+        #print('loss:', celoss, triple_loss)
 
-        self.loss = triple_loss + loss_
+        return triple_loss + celoss, triple_loss.item(), celoss.item()
 
 def create_model(args):
     suffix_name = args.suffix_name #'LandmarkNet'
