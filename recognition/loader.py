@@ -5,6 +5,7 @@ import torch
 import torch.utils.data as data
 from torchvision import datasets, models, transforms
 from PIL import Image
+from sklearn.utils import shuffle
 import settings
 import settings_retrieval
 
@@ -17,9 +18,10 @@ from albumentations import (
 
 DATA_DIR = settings.DATA_DIR
 
-def get_classes(num_classes):
-    df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'top{}_classes.csv'.format(num_classes)))
-    classes = df.classes.values.tolist()
+def get_classes(num_classes, start_index=0):
+    df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'top203094_classes.csv'))
+    classes = df.classes.values.tolist()[start_index: start_index+num_classes]
+    assert num_classes == len(classes)
     stoi = { classes[i]: i for i in range(len(classes))}
     return classes, stoi
 
@@ -124,10 +126,16 @@ class ImageDataset(data.Dataset):
             labels = torch.tensor([x[1] for x in batch])
             return imgs, labels
 
-def get_train_val_loaders(num_classes, batch_size=4, dev_mode=False, val_num=6000, val_batch_size=1024):
-    classes, stoi = get_classes(num_classes)
+def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=False, val_num=6000, val_batch_size=1024):
+    classes, stoi = get_classes(num_classes, start_index=start_index)
 
-    df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train_{}.csv'.format(num_classes)))
+    if num_classes == 50000 and start_index == 0:
+        df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train_{}.csv'.format(num_classes)))
+    else:
+        df_all = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train.csv'))
+        df = shuffle(df_all[df_all.landmark_id.isin(set(classes))].copy().sort_values(by='id'), random_state=1234)
+        print(df.shape)
+        print(df.head())
 
     split_index = int(len(df) * 0.95)
     train_df = df[:split_index]
@@ -193,7 +201,7 @@ def get_retrieval_index_loader(batch_size=1024, dev_mode=False):
     return loader
 
 def test_train_val_loader():
-    train_loader, val_loader = get_train_val_loaders(50000, dev_mode=True)
+    train_loader, val_loader = get_train_val_loaders(50000, 50000, dev_mode=True)
     for img, label in val_loader:
         print(img.size(), img)
         print(label)

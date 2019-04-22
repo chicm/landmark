@@ -57,7 +57,7 @@ def create_imagenet_backbone(backbone_name, pretrained=True):
     return backbone
 
 class LandmarkNet(nn.Module):
-    def __init__(self, backbone_name, num_classes=1000, pretrained=True, suffix_name='LandmarkNet'):
+    def __init__(self, backbone_name, num_classes=1000, start_index=0, pretrained=True, suffix_name='LandmarkNet'):
         super(LandmarkNet, self).__init__()
         print('num_classes:', num_classes)
         self.backbone = create_imagenet_backbone(backbone_name)
@@ -66,7 +66,7 @@ class LandmarkNet(nn.Module):
         self.ftr_num = ftr_num
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.logit = nn.Linear(ftr_num, num_classes)
-        self.name = '{}_{}_{}'.format(suffix_name, backbone_name, num_classes)
+        self.name = '{}_{}_{}_{}'.format(suffix_name, backbone_name, start_index, num_classes)
 
     def logits(self, x):
         x = self.avg_pool(x)
@@ -178,13 +178,13 @@ def create_model(args):
     #if args.balanced:
     #    suffix_name = 'LandmarkNetB'
     if args.init_ckp is not None:
-        model = LandmarkNet(backbone_name=args.backbone, num_classes=args.init_num_classes, suffix_name=suffix_name)
+        model = LandmarkNet(backbone_name=args.backbone, num_classes=args.init_num_classes, start_index=args.start_index, suffix_name=suffix_name)
         model.load_state_dict(torch.load(args.init_ckp))
         if args.init_num_classes != args.num_classes:
             model.logit = nn.Linear(model.ftr_num, args.num_classes)
             model.name = '{}_{}_{}'.format(suffix_name, args.backbone, args.num_classes)
     else:
-        model = LandmarkNet(backbone_name=args.backbone, num_classes=args.num_classes, suffix_name=suffix_name)
+        model = LandmarkNet(backbone_name=args.backbone, num_classes=args.num_classes, start_index=args.start_index, suffix_name=suffix_name)
 
     model_file = os.path.join(settings.MODEL_DIR, model.name, args.ckp_name)
 

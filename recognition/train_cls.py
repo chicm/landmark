@@ -106,9 +106,9 @@ def train(args):
     #ExponentialLR(optimizer, 0.9, last_epoch=-1) #CosineAnnealingLR(optimizer, 15, 1e-7) 
 
     if args.balanced:
-        _, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num)
+        _, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, start_index=args.start_index, batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num)
     else:
-        _, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num)
+        _, val_loader = get_train_val_loaders(num_classes=args.num_classes, start_index=args.start_index, batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num)
 
     best_top1_acc = 0.
 
@@ -132,9 +132,9 @@ def train(args):
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.balanced:
-            train_loader, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
+            train_loader, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, start_index=args.start_index, batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
         else:
-            train_loader, val_loader = get_train_val_loaders(num_classes=args.num_classes, batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
+            train_loader, val_loader = get_train_val_loaders(num_classes=args.num_classes, start_index=args.start_index, batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
 
         train_loss = 0
 
@@ -303,7 +303,7 @@ def predict_softmax(args):
 
             print('{}/{}'.format(args.batch_size*(i+1), test_loader.num), end='\r')
 
-    classes, stoi = get_classes(num_classes=args.num_classes)
+    classes, stoi = get_classes(num_classes=args.num_classes, start_index=args.start_index)
     preds = preds.numpy()
     scores = scores.numpy()
     print(preds.shape)
@@ -359,6 +359,7 @@ if __name__ == '__main__':
     parser.add_argument('--init_ckp', default=None, type=str, help='resume from checkpoint path')
     parser.add_argument('--init_num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
+    parser.add_argument('--start_index', type=int, default=0, help='class start index')
     parser.add_argument('--val', action='store_true')
     parser.add_argument('--dev_mode', action='store_true')
     parser.add_argument('--balanced', action='store_true')
