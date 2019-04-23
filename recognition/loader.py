@@ -11,7 +11,7 @@ import settings_retrieval
 
 from albumentations import (
     HorizontalFlip, IAAPerspective, ShiftScaleRotate, CLAHE, RandomRotate90, RandomBrightnessContrast,
-    Transpose, ShiftScaleRotate, Blur, OpticalDistortion, GridDistortion, HueSaturationValue,
+    Transpose, ShiftScaleRotate, Blur, OpticalDistortion, GridDistortion, HueSaturationValue, Resize,
     IAAAdditiveGaussianNoise, GaussNoise, MotionBlur, MedianBlur, IAAPiecewiseAffine, VerticalFlip,
     IAASharpen, IAAEmboss, RandomContrast, RandomBrightness, Flip, OneOf, Compose, RandomGamma, ElasticTransform, ChannelShuffle,RGBShift, Rotate
 )
@@ -60,9 +60,12 @@ def img_augment(p=.8):
         #HueSaturationValue(p=.33)
     ], p=p)
 
+def resize_aug(p=1.):
+    return Compose([Resize(224, 224)], p=1.)
+
 class ImageDataset(data.Dataset):
-    def __init__(self, df, img_dir, stoi=None, train_mode=True, test_data=False, flat=False):
-        self.input_size = 256
+    def __init__(self, df, img_dir, stoi=None, train_mode=True, test_data=False, flat=False, input_size=256):
+        self.input_size = input_size
         self.df = df
         self.img_dir = img_dir
         self.stoi = stoi
@@ -91,6 +94,10 @@ class ImageDataset(data.Dataset):
         #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if self.train_mode:
             aug = img_augment(p=0.8)
+            img = aug(image=img)['image']
+
+        if self.input_size != 256:
+            aug = resize_aug(p=1.)
             img = aug(image=img)['image']
         
         img = transforms.functional.to_tensor(img)
@@ -177,28 +184,17 @@ def get_train_all_loader(batch_size=4, dev_mode=False):
 
     return loader
 
-def get_test_loader(batch_size=1024, dev_mode=False):
+def get_test_loader(batch_size=1024, dev_mode=False, img_size=256):
     #classes, stoi = get_classes(num_classes)
 
     df = pd.read_csv(os.path.join(DATA_DIR, 'test', 'test.csv'))
     if dev_mode:
         df = df[:10]
-    test_set = ImageDataset(df, settings.TEST_IMG_DIR, stoi=None, train_mode=False, test_data=True)
+    test_set = ImageDataset(df, settings.TEST_IMG_DIR, stoi=None, train_mode=False, test_data=True, input_size=img_size)
     test_loader = data.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=test_set.collate_fn, drop_last=False)
     test_loader.num = len(test_set)
 
     return test_loader
-
-def get_retrieval_index_loader(batch_size=1024, dev_mode=False):
-
-    df = pd.read_csv(os.path.join(settings_retrieval.DATA_DIR, 'index_clean.csv'))
-    if dev_mode:
-        df = df[:1000]
-    ds = ImageDataset(df, settings_retrieval.INDEX_IMG_DIR, stoi=None, train_mode=False, test_data=False, flat=True)
-    loader = data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=ds.collate_fn, drop_last=False)
-    loader.num = len(ds)
-
-    return loader
 
 def test_train_val_loader():
     train_loader, val_loader = get_train_val_loaders(50000, 50000, dev_mode=True)
@@ -208,7 +204,7 @@ def test_train_val_loader():
         break
 
 def test_test_loader():
-    test_loader = get_test_loader(batch_size=4, dev_mode=True)
+    test_loader = get_test_loader(batch_size=4, dev_mode=True, img_size=224)
     for img, found in test_loader:
         print(img.size(), img)
         print(found)
@@ -219,6 +215,6 @@ def test_index_loader():
         print(img.size(), img)
 
 if __name__ == '__main__':
-    test_train_val_loader()
-    #test_test_loader()
+    #test_train_val_loader()
+    test_test_loader()
     #test_index_loader()

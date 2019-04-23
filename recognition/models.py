@@ -230,9 +230,9 @@ def test_feature_net():
     x = torch.randn(2, 3, 224, 224).cuda()
     model = FeatureNetV2('se_resnet50')
     model.cuda()
-    y = model(x)
+    g, l, _ = model(x)
     #print(y.size())
-    print(y)
+    print(g.size(), l.size())
 
 if __name__ == '__main__':
     #test()
