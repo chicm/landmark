@@ -66,8 +66,8 @@ def create_retrieval_model(args):
     return model, model_file
 
 def get_loss(global_feat, local_feat, results, labels):
-    triple_loss = global_loss(TripletLoss(margin=0.3), global_feat, labels)[0] + \
-                  local_loss(TripletLoss(margin=0.3), local_feat, labels)[0]
+    triple_loss = global_loss(TripletLoss(margin=0.6), global_feat, labels)[0] + \
+                  local_loss(TripletLoss(margin=0.6), local_feat, labels)[0]
     celoss = c(results, labels)
     #print('train result:', results.size())
     #print('loss:', celoss.mean())
@@ -114,6 +114,7 @@ def train(args):
     for epoch in range(args.start_epoch, args.epochs):
         train_loader, val_loader = get_train_val_loaders(batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
         train_loss = 0
+        total_trip_loss = 0.
 
         current_lr = get_lrs(optimizer)  #optimizer.state_dict()['param_groups'][2]['lr']
         bg = time.time()
@@ -138,9 +139,10 @@ def train(args):
             #print('top1:', top1, 'top10:', top10)
 
             train_loss += batch_loss.item()
+            total_trip_loss += trip_loss
             print('\r {:4d} | {:.6f} | {:06d}/{} | {:.4f} | {:.4f} | {:.4f} |'.format(
                 epoch, float(current_lr[0]), args.batch_size*(batch_idx+1),
-                train_loader.num, ce_loss, trip_loss, train_loss/(batch_idx+1)), end='')
+                train_loader.num, ce_loss, total_trip_loss/(batch_idx+1), train_loss/(batch_idx+1)), end='')
 
             if train_iter > 0 and train_iter % args.iter_val == 0:
                 if isinstance(model, DataParallel):

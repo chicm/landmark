@@ -173,14 +173,6 @@ class FeatureNetV2(nn.Module):
             for param in self.basemodel.features[8:].parameters():
                 param.requires_grad = True
 
-    def getLoss(self, global_feat, local_feat, results, labels):
-        triple_loss = global_loss(TripletLoss(margin=0.3), global_feat, labels)[0] + \
-                      local_loss(TripletLoss(margin=0.3), local_feat, labels)[0]
-        celoss = c(results, labels)
-        #print('loss:', celoss, triple_loss)
-
-        return triple_loss + celoss, triple_loss.item(), celoss.item()
-
 def create_model(args):
     suffix_name = args.suffix_name #'LandmarkNet'
     #if args.balanced:

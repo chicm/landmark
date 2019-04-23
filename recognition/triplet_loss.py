@@ -57,13 +57,13 @@ def hard_example_mining(dist_mat, labels, return_inds=False):
     N = dist_mat.size(0)
 
     # shape [N, N]
-    new_whale_indexs = (labels == 5004 * 2).nonzero()
+    #new_whale_indexs = (labels == 5004 * 2).nonzero()
     is_pos = labels.expand(N, N).eq(labels.expand(N, N).t())
     is_neg = labels.expand(N, N).ne(labels.expand(N, N).t())
-    for i in new_whale_indexs:
-        is_pos[i, :] = 0
-        is_pos[:, i] = 0
-        is_pos[i, i] = 1
+    #for i in new_whale_indexs:
+    #    is_pos[i, :] = 0
+    #    is_pos[:, i] = 0
+    #    is_pos[i, i] = 1
 
     # `dist_ap` means distance(anchor, positive)
     # both `dist_ap` and `relative_p_inds` with shape [N, 1]
