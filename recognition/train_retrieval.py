@@ -16,7 +16,7 @@ from balanced_loader import get_balanced_train_val_loaders
 import cv2
 from models import FeatureNetV2, create_model
 from torch.nn import DataParallel
-
+from triplet_loss import global_loss, local_loss, TripletLoss
 import settings_retrieval
 
 MODEL_DIR = settings_retrieval.MODEL_DIR
@@ -64,6 +64,15 @@ def create_retrieval_model(args):
     model = model.cuda()
 
     return model, model_file
+
+def get_loss(global_feat, local_feat, results, labels):
+    triple_loss = global_loss(TripletLoss(margin=0.3), global_feat, labels)[0] + \
+                  local_loss(TripletLoss(margin=0.3), local_feat, labels)[0]
+    celoss = c(results, labels)
+    #print('train result:', results.size())
+    #print('loss:', celoss.mean())
+
+    return triple_loss + celoss, triple_loss.item(), celoss.item()
 
 def train(args):
     print('start training...')
@@ -115,13 +124,18 @@ def train(args):
             optimizer.zero_grad()
             global_feat, local_feat, results = model(img)
 
-            batch_loss, trip_loss, ce_loss = model.getLoss(global_feat, local_feat, results, target)
+            batch_loss, trip_loss, ce_loss = get_loss(global_feat, local_feat, results, target)
             #batch_loss = model.loss
 
             #loss = criterion(args, output, target)
             batch_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0, norm_type=2)
             optimizer.step()
+
+            #pred = F.softmax(results, dim=1)
+            #top1, top10 = accuracy(pred, target)
+            #top1, top10 = top1/len(img), top10/len(img)
+            #print('top1:', top1, 'top10:', top10)
 
             train_loss += batch_loss.item()
             print('\r {:4d} | {:.6f} | {:06d}/{} | {:.4f} | {:.4f} | {:.4f} |'.format(
@@ -178,7 +192,10 @@ def validate(args, model, val_loader):
             img, target = img.cuda(), target.cuda()
             #print('img:', img.size(), target.size())
             global_feat, local_feat, output = model(img)
+            #print('output:', output.size())
             loss = criterion(args, output, target)
+            #print('batch loss:', loss.mean())
+            #exit(0)
             total_loss += loss.item()
 
             #print(output.size(), output)
@@ -228,7 +245,7 @@ if __name__ == '__main__':
     parser.add_argument('--suffix_name', type=str, default='LandmarkNet')
     parser.add_argument('--no_first_val', action='store_true')
     parser.add_argument('--always_save',action='store_true', help='alway save')
-    parser.add_argument('--val_num', default=1000, type=int, help='number of val data')
+    parser.add_argument('--val_num', default=6000, type=int, help='number of val data')
     #parser.add_argument('--img_sz', default=256, type=int, help='image size')
     
     args = parser.parse_args()

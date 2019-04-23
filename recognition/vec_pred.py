@@ -4,7 +4,7 @@ import pandas as pd
 import argparse
 import torch
 from torch.nn import DataParallel
-from models import FeatureNet, create_model
+from models import FeatureNet, create_model, FeatureNetV2
 from loader import get_train_all_loader, get_test_loader, get_retrieval_index_loader
 import faiss
 from tqdm import tqdm
@@ -12,6 +12,24 @@ import time
 
 import settings
 import settings_retrieval
+
+def create_retrieval_model(args):
+    model = FeatureNetV2(args.backbone, cls_model=None)
+    
+    if not os.path.exists(args.ckp):
+        raise AssertionError('ckp not found')
+    
+    print('loading {}...'.format(model_file))
+    model.load_state_dict(torch.load(args.ckp))
+
+    if torch.cuda.device_count() > 1:
+        model_name = model.name
+        model = DataParallel(model)
+        model.name = model_name
+    model = model.cuda()
+    model.eval()
+
+    return model
 
 def create_feature_model(args):
     args.predict = True
@@ -194,6 +212,7 @@ if __name__ == '__main__':
     parser.add_argument('--task', type=str, choices=['build_rec', 'build_ret', 'pred_rec', 'pred_ret'], required=True)
     parser.add_argument('--ckp_name', type=str, default='best_pretrained.pth',help='check point file name')
     parser.add_argument('--sub_file', default='sub_vec1.csv', type=str)
+    parser.add_argument('--ckp', default=None, type=str)
     
     args = parser.parse_args()
     print(args)
