@@ -78,6 +78,9 @@ class ImageDataset(data.Dataset):
 
         if self.test_data:
             return self.get_img(anchor_img_id)
+        
+        if not self.train_mode:
+            return [self.get_img(anchor_img_id)], [anchor_label]
 
         pos_img_id = random.choice(self.invert_dict[anchor_label])
 
@@ -145,7 +148,7 @@ def get_train_val_loaders(batch_size=4, dev_mode=False, val_num=1000, val_batch_
     val_set = ImageDataset(val_df, invert_dict, settings_retrieval.TRAIN_IMG_DIR, train_mode=False)
     
     train_loader = data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4, collate_fn=train_set.collate_fn, drop_last=True)
-    train_loader.num = len(train_set)
+    train_loader.num = len(train_set) * 4
 
     val_loader = data.DataLoader(val_set, batch_size=val_batch_size, shuffle=False, num_workers=4, collate_fn=val_set.collate_fn, drop_last=False)
     val_loader.num = len(val_set)
