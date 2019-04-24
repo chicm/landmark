@@ -102,15 +102,8 @@ def build_retrieval_index_v2(args):
     model = create_retrieval_model(args)
 
     retrieval_index_loader = get_retrieval_index_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
-    index_fn = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval_2'.format(model.name))
+    index_fn = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval_3'.format(model.name))
     build_index(args, model, retrieval_index_loader, False, index_fn, d=2048, model_output_index=0)
-
-    retrieval_index_loader = get_retrieval_index_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
-    index_fn_local = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval_2_local'.format(model.name))
-    build_index(args, model, retrieval_index_loader, False, index_fn_local, d=3584, model_output_index=1)
-
-
-#def pred_test_vectors()
 
 def pred_by_vector_search(args):
     model = create_feature_model(args)
@@ -175,7 +168,8 @@ def pred_retrieval(args):
 
     test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode, img_size=224)
 
-    feats = []
+    global_feats = []
+    local_feats = []
     founds = []
     with torch.no_grad():
         for i, (x, found) in tqdm(enumerate(test_loader), total=test_loader.num//args.batch_size):
@@ -184,16 +178,19 @@ def pred_retrieval(args):
             global_feat, local_feat, _ = model(x)
             #print('local:', local_feat.size())
             #exit(1)
+            global_feats.append(global_feat.cpu())
+            #local_feats.append(local_feat.view(local_feat.size(0), -1).cpu())
+            local_feats.append(local_feat.cpu())
 
-            if args.local:
-                feats.append(local_feat.view(local_feat.size(0), -1).cpu())
-            else:
-                feats.append(global_feat.cpu())
             founds.append(found.cpu())
 
-    xb = torch.cat(feats, 0).numpy()
+    global_feats = torch.cat(global_feats, 0).numpy()
+    local_feats = torch.cat(local_feats, 0).numpy()
     founds = torch.cat(founds, 0).numpy()
-    print(xb.shape, founds.shape)
+    
+    xb = global_feats
+
+    print(global_feats.shape, local_feats.shape, xb.shape, founds.shape)
 
     index_fn = args.index_fn #os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval'.format(model.name))
     print('loading index...')
@@ -204,9 +201,11 @@ def pred_retrieval(args):
     D, I = index.search(xb, 100)
     print('search time:', time.time() - bg)
 
-    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'D_tmp.npy'), D)
-    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'I_tmp.npy'), I)
-    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'founds_tmp.npy'), founds)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'D.npy'), D)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'I_.npy'), I)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'founds.npy'), founds)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'local_feats.npy'), global_feats)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'global_feats.npy'), local_feats)
 
     #top1_index_ids = I[:, 0].squeeze()
     #print(pred_labels)
@@ -238,7 +237,7 @@ if __name__ == '__main__':
     parser.add_argument('--init_num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--dev_mode', action='store_true')
-    parser.add_argument('--local', action='store_true')
+    #parser.add_argument('--local', action='store_true')
     parser.add_argument('--build_rec', action='store_true')
     parser.add_argument('--build_ret', action='store_true')
     parser.add_argument('--task', type=str, choices=['build_rec', 'build_ret', 'pred_rec', 'pred_ret'], required=True)
