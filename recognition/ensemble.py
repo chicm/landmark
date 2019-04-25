@@ -26,9 +26,11 @@ def create_models_from_ckps(args):
         model_args.ckp_name = os.path.basename(ckp_fn)
         model_args.predict = True
         model_name = os.path.basename(os.path.dirname(ckp_fn))
+        model_args.suffix_name = model_name.split('_')[0]
         model_args.num_classes = int(model_name.split('_')[-1])
-        model_args.backbone = '_'.join(model_name.split('_')[1:-1])
-        print(model_args.backbone, model_args.num_classes)
+        model_args.start_index = int(model_name.split('_')[-2])
+        model_args.backbone = '_'.join(model_name.split('_')[1:-2])
+        print(model_args.suffix_name, model_args.backbone, model_args.start_index, model_args.num_classes)
         model, _ = create_model(model_args)
 
         if torch.cuda.device_count() > 1:
@@ -110,7 +112,7 @@ def create_submission(args, predictions, scores, founds, outfile):
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Landmark detection')
-    parser.add_argument('--batch_size', default=2048, type=int, help='batch_size')
+    parser.add_argument('--batch_size', default=1024, type=int, help='batch_size')
     parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--val', action='store_true')
     parser.add_argument('--dev_mode', action='store_true')
