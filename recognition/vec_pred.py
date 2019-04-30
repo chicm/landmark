@@ -4,7 +4,7 @@ import pandas as pd
 import argparse
 import torch
 from torch.nn import DataParallel
-from models import FeatureNet, create_model, FeatureNetV2
+from models import FeatureNet, create_model, FeatureNetV2, FeatureNetV1
 from loader import get_train_all_loader, get_test_loader
 from loader_retrieval import get_retrieval_index_loader
 import faiss
@@ -35,7 +35,7 @@ def create_retrieval_model(args):
 def create_feature_model(args):
     args.predict = True
     cls_model, _ = create_model(args)
-    model = FeatureNet(args.backbone, cls_model=cls_model)
+    model = FeatureNetV1(args.backbone, cls_model=cls_model)
     
     if torch.cuda.device_count() > 1:
         model_name = model.name
@@ -57,7 +57,7 @@ def build_retrieval_index(args):
     model = create_feature_model(args)
 
     retrieval_index_loader = get_retrieval_index_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
-    index_fn = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval'.format(model.name))
+    index_fn = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval_v1'.format(model.name))
     build_index(args, model, retrieval_index_loader, False, index_fn)
 
 
@@ -166,7 +166,7 @@ def pred_retrieval(args):
     #model = create_feature_model(args)
     model = create_retrieval_model(args)
 
-    test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode, img_size=224)
+    test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode, img_size=256) #224
 
     global_feats = []
     local_feats = []
@@ -202,16 +202,59 @@ def pred_retrieval(args):
     print('search time:', time.time() - bg)
 
     np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'D.npy'), D)
-    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'I_.npy'), I)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'I.npy'), I)
     np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'founds.npy'), founds)
-    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'local_feats.npy'), global_feats)
-    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'global_feats.npy'), local_feats)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'local_feats.npy'), local_feats)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'global_feats.npy'), global_feats)
 
     #top1_index_ids = I[:, 0].squeeze()
     #print(pred_labels)
     #scores = [0.5] * xb.shape[0]
     
     create_retrieval_submission(args, I, founds, args.sub_file)
+
+def pred_retrieval_featurenet(args):
+    model = create_feature_model(args)
+    #model = create_retrieval_model(args)
+
+    test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode, img_size=256) #224
+
+    global_feats = []
+    founds = []
+    with torch.no_grad():
+        for i, (x, found) in tqdm(enumerate(test_loader), total=test_loader.num//args.batch_size):
+            x = x.cuda()
+            #print('x:', x.size())
+            global_feat = model(x)
+            #print('local:', local_feat.size())
+            #exit(1)
+            global_feats.append(global_feat.cpu())
+            founds.append(found.cpu())
+
+    global_feats = torch.cat(global_feats, 0).numpy()
+    founds = torch.cat(founds, 0).numpy()
+    print(global_feats.shape, founds.shape)
+
+    index_fn = args.index_fn #os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval'.format(model.name))
+    print('loading index...')
+
+    index = faiss.read_index(index_fn)
+    print('searching...')
+    bg = time.time()
+    D, I = index.search(global_feats, 100)
+    print('search time:', time.time() - bg)
+
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'D.npy'), D)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'I.npy'), I)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'founds.npy'), founds)
+    np.save(os.path.join(settings_retrieval.VECTOR_DIR, 'feats', 'global_feats.npy'), global_feats)
+
+    #top1_index_ids = I[:, 0].squeeze()
+    #print(pred_labels)
+    #scores = [0.5] * xb.shape[0]
+    
+    create_retrieval_submission(args, I, founds, args.sub_file)
+
 
 def create_retrieval_submission(args, I, founds, outfile):
     df = pd.read_csv(os.path.join(settings_retrieval.DATA_DIR, 'index_clean.csv'))
@@ -232,10 +275,12 @@ def create_retrieval_submission(args, I, founds, outfile):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Landmark detection')
     parser.add_argument('--backbone', default='se_resnext50_32x4d', type=str, help='backbone')
+    parser.add_argument('--suffix_name', default='LandmarkNet', type=str, help='backbone')
     parser.add_argument('--batch_size', default=2048, type=int, help='batch_size')
     parser.add_argument('--init_ckp', default=None, type=str, help='resume from checkpoint path')
     parser.add_argument('--init_num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
+    parser.add_argument('--start_index', type=int, default=0, help='init num classes')
     parser.add_argument('--dev_mode', action='store_true')
     #parser.add_argument('--local', action='store_true')
     parser.add_argument('--build_rec', action='store_true')
@@ -253,11 +298,13 @@ if __name__ == '__main__':
     if args.task == 'build_rec':
         build_train_index(args)
     elif args.task == 'build_ret':
-        build_retrieval_index_v2(args)
+        #build_retrieval_index_v2(args)
+        build_retrieval_index(args)
     elif args.task == 'pred_rec':
         pred_by_vector_search(args)
     elif args.task == 'pred_ret':
-        pred_retrieval(args)
+        #pred_retrieval(args)
+        pred_retrieval_featurenet(args)
     else:
         pass
 

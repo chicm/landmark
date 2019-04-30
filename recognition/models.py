@@ -10,8 +10,10 @@ from net.densenet import densenet121, densenet161, densenet169, densenet201
 from net.nasnet import nasnetalarge
 from net.inceptionresnetv2 import inceptionresnetv2
 from net.inceptionv4 import inceptionv4
+from net.dpn import dpn98, dpn107, dpn92, dpn131
 
 from triplet_loss import global_loss, local_loss, TripletLoss
+import functional as LF
 
 import settings
 
@@ -53,14 +55,14 @@ def get_num_features(backbone_name):
 def create_imagenet_backbone(backbone_name, pretrained=True):
     if backbone_name in [
         'se_resnext50_32x4d', 'se_resnext101_32x4d', 'se_resnet50', 'senet154', 'se_resnet101',
-        'se_resnet152', 'nasnetmobile', 'mobilenet', 'nasnetalarge']:
+        'se_resnet152', 'nasnetmobile', 'mobilenet', 'nasnetalarge', 'dpn98']:
         backbone = eval(backbone_name)()
     elif backbone_name in ['resnet34', 'resnet18', 'resnet50', 'resnet101', 'resnet152', 'densenet121', 'densenet161', 'densenet169', 'densenet201']:
         backbone = eval(backbone_name)(pretrained=pretrained)
     else:
         raise ValueError('unsupported backbone name {}'.format(backbone_name))
     return backbone
-
+#c = nn.CrossEntropyLoss(reduction='none')
 class LandmarkNet(nn.Module):
     def __init__(self, backbone_name, num_classes=1000, start_index=0, pretrained=True, suffix_name='LandmarkNet'):
         super(LandmarkNet, self).__init__()
@@ -77,11 +79,11 @@ class LandmarkNet(nn.Module):
         x = self.avg_pool(x)
         x = F.dropout2d(x, 0.4, self.training)
         x = x.view(x.size(0), -1)
-        return self.logit(x)
+        return self.logit(x)#, c(x, label)
     
     def forward(self, x):
         x = self.backbone.features(x)
-        return self.logits(x)
+        return self.logits(x) #, c(x, label)
 
 class FeatureNet(nn.Module):
     def __init__(self, backbone_name, cls_model=None, suffix_name='FeatureNet'):
@@ -99,6 +101,30 @@ class FeatureNet(nn.Module):
         global_feat = F.avg_pool2d(feat, feat.size()[2:])
         global_feat = global_feat.view(global_feat.size(0), -1)
         global_feat = F.dropout(global_feat, p=0.2, training=self.training)
+        #global_feat = self.bottleneck_g(global_feat)
+        global_feat = l2_norm(global_feat)
+
+        #print(global_feat.size())
+
+        return global_feat
+
+class FeatureNetV1(nn.Module):
+    def __init__(self, backbone_name, cls_model=None, suffix_name='FeatureNetV1'):
+        super(FeatureNetV1, self).__init__()
+        if cls_model is None:
+            self.backbone = create_imagenet_backbone(backbone_name)
+        else:
+            self.backbone = cls_model.backbone
+        self.num_features = get_num_features(backbone_name)
+        self.name = '{}_{}'.format(suffix_name, backbone_name)
+        self.features = nn.Sequential(*(list(self.backbone.children())[:-2]))
+
+    def forward(self, x):
+        feat = self.features(x)
+        # global feat
+        global_feat = LF.rmac(feat)
+        global_feat = global_feat.view(global_feat.size(0), -1)
+        #global_feat = F.dropout(global_feat, p=0.2, training=self.training)
         #global_feat = self.bottleneck_g(global_feat)
         global_feat = l2_norm(global_feat)
 
@@ -220,11 +246,11 @@ def test():
 
 def test_feature_net():
     x = torch.randn(2, 3, 224, 224).cuda()
-    model = FeatureNetV2('se_resnet50')
+    model = FeatureNetV1('se_resnet101')
     model.cuda()
-    g, l, _ = model(x)
+    g = model(x)
     #print(y.size())
-    print(g.size(), l.size())
+    print(g.size())
 
 if __name__ == '__main__':
     #test()

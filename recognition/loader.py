@@ -11,7 +11,7 @@ import settings_retrieval
 
 from albumentations import (
     HorizontalFlip, IAAPerspective, ShiftScaleRotate, CLAHE, RandomRotate90, RandomBrightnessContrast,
-    Transpose, ShiftScaleRotate, Blur, OpticalDistortion, GridDistortion, HueSaturationValue, Resize,
+    Transpose, ShiftScaleRotate, Blur, OpticalDistortion, GridDistortion, HueSaturationValue, Resize, RandomSizedCrop,
     IAAAdditiveGaussianNoise, GaussNoise, MotionBlur, MedianBlur, IAAPiecewiseAffine, VerticalFlip,
     IAASharpen, IAAEmboss, RandomContrast, RandomBrightness, Flip, OneOf, Compose, RandomGamma, ElasticTransform, ChannelShuffle,RGBShift, Rotate
 )
@@ -60,6 +60,25 @@ def img_augment(p=.8):
         #HueSaturationValue(p=.33)
     ], p=p)
 
+def weak_augment(p=.8):
+    return Compose([
+        RandomSizedCrop((220, 250), 256, 256, p=0.8),
+        RandomRotate90(p=0.1),
+        OneOf([
+                #CLAHE(clip_limit=2),
+                IAASharpen(),
+                IAAEmboss(),
+                RandomContrast(),
+                RandomBrightness(),
+            ], p=0.3),
+        #
+        ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=15, p=.75 ),
+        Blur(blur_limit=3, p=.33),
+        OpticalDistortion(p=.33),
+        #GridDistortion(p=.33),
+        #HueSaturationValue(p=.33)
+    ], p=p)
+
 def resize_aug(p=1.):
     return Compose([Resize(224, 224)], p=1.)
 
@@ -93,12 +112,13 @@ class ImageDataset(data.Dataset):
         img = cv2.imread(fn)
         #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if self.train_mode:
-            aug = img_augment(p=0.8)
+            #aug = img_augment(p=0.8)
+            aug = weak_augment(p=0.8)
             img = aug(image=img)['image']
 
-        if self.input_size != 256:
-            aug = resize_aug(p=1.)
-            img = aug(image=img)['image']
+        #if self.input_size != 256:
+        #    aug = resize_aug(p=1.)
+        #    img = aug(image=img)['image']
         
         img = transforms.functional.to_tensor(img)
         img = transforms.functional.normalize(img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])

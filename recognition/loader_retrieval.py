@@ -27,7 +27,7 @@ def get_filename(img_id, img_dir):
 
 def img_augment(p=1.):
     return Compose([
-        RandomSizedCrop((200, 250), 224, 224, p=1.),
+        #RandomSizedCrop((200, 250), 224, 224, p=1.),
         HorizontalFlip(.5),
         OneOf([
                 CLAHE(clip_limit=2),
@@ -44,8 +44,8 @@ def img_augment(p=1.):
         #HueSaturationValue(p=.33)
     ], p=p)
 
-def val_aug(p=1.):
-    return Compose([Resize(224, 224)], p=1.)
+#def val_aug(p=1.):
+#    return Compose([Resize(224, 224)], p=1.)
 
 class ImageDataset(data.Dataset):
     def __init__(self, df, invert_dict, img_dir, train_mode=True, test_data=False):
@@ -67,9 +67,9 @@ class ImageDataset(data.Dataset):
         if self.train_mode:
             aug = img_augment(p=1.)
             img = aug(image=img)['image']
-        else:
-            aug = val_aug(p=1.)
-            img = aug(image=img)['image']
+        #else:
+        #    aug = val_aug(p=1.)
+        #    img = aug(image=img)['image']
         
         img = transforms.functional.to_tensor(img)
         img = transforms.functional.normalize(img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])

@@ -95,7 +95,7 @@ def train(args):
     model = model.cuda()
 
     if args.optim == 'Adam':
-        optimizer = optim.Adam(model.parameters(), lr=args.lr)#, weight_decay=0.0001)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=0.0001)
     else:
         optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.0001)
 
