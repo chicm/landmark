@@ -14,10 +14,11 @@ from net.dpn import dpn98, dpn107, dpn92, dpn131
 
 from triplet_loss import global_loss, local_loss, TripletLoss
 import functional as LF
+from utils import accuracy
 
 import settings
 
-c = nn.CrossEntropyLoss()
+c = nn.CrossEntropyLoss(reduction='none')
 
 def l2_norm(input,axis=1):
     norm = torch.norm(input,2,axis,True)
@@ -62,7 +63,7 @@ def create_imagenet_backbone(backbone_name, pretrained=True):
     else:
         raise ValueError('unsupported backbone name {}'.format(backbone_name))
     return backbone
-#c = nn.CrossEntropyLoss(reduction='none')
+
 class LandmarkNet(nn.Module):
     def __init__(self, backbone_name, num_classes=1000, start_index=0, pretrained=True, suffix_name='LandmarkNet'):
         super(LandmarkNet, self).__init__()
@@ -81,9 +82,20 @@ class LandmarkNet(nn.Module):
         x = x.view(x.size(0), -1)
         return self.logit(x)#, c(x, label)
     
-    def forward(self, x):
+    def forward(self, x, label=None, predict=False):
         x = self.backbone.features(x)
-        return self.logits(x) #, c(x, label)
+        out = self.logits(x)
+
+        if predict:
+            return out
+
+        loss = c(out, label).sum()
+        if self.training:
+            return loss
+        else:
+            pred = F.softmax(out, dim=1)
+            top1, top10 = accuracy(pred, label)
+            return loss, torch.tensor([top1]).cuda(), torch.tensor([top10]).cuda()
 
 class FeatureNet(nn.Module):
     def __init__(self, backbone_name, cls_model=None, suffix_name='FeatureNet'):

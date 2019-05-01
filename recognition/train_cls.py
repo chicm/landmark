@@ -70,20 +70,6 @@ def criterion(args, outputs, targets):
         return c(outputs, targets)
     '''
 
-def accuracy(output, label, topk=(1,10)):
-    maxk = max(topk)
-
-    _, pred = output.topk(maxk, 1, True, True)
-    pred = pred.t()
-    correct = pred.eq(label.view(1, -1).expand_as(pred))
-
-    res = []
-    for k in topk:
-        correct_k = correct[:k].view(-1).sum().item()
-        res.append(correct_k)
-    return res
-
-
 def train(args):
     print('start training...')
     model, model_file = create_model(args)
@@ -144,12 +130,13 @@ def train(args):
             train_iter += 1
             img, target  = data
             img, target = img.cuda(), target.cuda()
-            optimizer.zero_grad()
-            output = model(img)
-            
-            loss = criterion(args, output, target)
+            loss = model(img, target).sum() / img.size(0)
+            #loss = criterion(args, output, target)
+            #(img.size(0) * loss).backward()
             loss.backward()
+
             optimizer.step()
+            optimizer.zero_grad()
 
             train_loss += loss.item()
             print('\r {:4d} | {:.6f} | {:06d}/{} | {:.4f} | {:.4f} |'.format(
@@ -204,8 +191,9 @@ def validate(args, model, val_loader):
             n_batches += 1
             img, target = img.cuda(), target.cuda()
             #print(img.size(), img)
-            output = model(img)
-            loss = criterion(args, output, target)
+            loss, top1, top10 = model(img, target)
+            loss, top1, top10 = loss.sum() / img.size(0), top1.sum().item(), top10.sum().item()
+            #loss = criterion(args, output, target)
             total_loss += loss.item()
 
             #print(output.size(), output)
@@ -213,8 +201,8 @@ def validate(args, model, val_loader):
             
             #preds = output.max(1, keepdim=True)[1]
             #corrects += preds.eq(target.view_as(preds)).sum().item()
-            output = F.softmax(output, dim=1)
-            top1, top10 = accuracy(output, target)
+            #output = F.softmax(output, dim=1)
+            #top1, top10 = accuracy(output, target)
             top1_corrects += top1
             corrects += top10
             #total_num += len(img)
@@ -277,7 +265,7 @@ def predict_softmax(args):
             x = x.cuda()
             #output = torch.sigmoid(model(x))
             #print(x[0, 0, :])
-            output = model(x)
+            output = model(x, None, True)
             output = F.softmax(output, dim=1)
             #pred = (output > 0.03).byte()  #  use threshold
             #preds = output.max(1, keepdim=True)[1]

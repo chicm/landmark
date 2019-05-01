@@ -24,7 +24,7 @@ def predict_model_softmax_output(model, test_loader, cls_out_index=2):
             print('{}/{}'.format(cur_num, test_loader.num), end='\r')
 
     # preds is cls index, not label
-    return [torch.cat(x, 0).numpy() for x in preds, scores, founds]
+    return [torch.cat(x, 0).numpy() for x in [preds, scores, founds]]
 
 def create_submission(preds, scores, founds, outfile, classes=None, dev_mode=False):
     if classes is None:
@@ -45,3 +45,15 @@ def create_submission(preds, scores, founds, outfile, classes=None, dev_mode=Fal
     meta['landmarks'] = label_strs
     meta.to_csv(outfile, index=False, columns=['id', 'landmarks'])
 
+def accuracy(output, label, topk=(1,10)):
+    maxk = max(topk)
+
+    _, pred = output.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(label.view(1, -1).expand_as(pred))
+
+    res = []
+    for k in topk:
+        correct_k = correct[:k].view(-1).sum().item()
+        res.append(correct_k)
+    return res

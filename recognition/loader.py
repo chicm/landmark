@@ -62,8 +62,8 @@ def img_augment(p=.8):
 
 def weak_augment(p=.8):
     return Compose([
-        RandomSizedCrop((220, 250), 256, 256, p=0.8),
-        RandomRotate90(p=0.1),
+        RandomSizedCrop((200, 250), 256, 256, p=0.8),
+        RandomRotate90(p=0.05),
         OneOf([
                 #CLAHE(clip_limit=2),
                 IAASharpen(),
@@ -78,9 +78,6 @@ def weak_augment(p=.8):
         #GridDistortion(p=.33),
         #HueSaturationValue(p=.33)
     ], p=p)
-
-def resize_aug(p=1.):
-    return Compose([Resize(224, 224)], p=1.)
 
 class ImageDataset(data.Dataset):
     def __init__(self, df, img_dir, stoi=None, train_mode=True, test_data=False, flat=False, input_size=256):
@@ -158,11 +155,14 @@ def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=Fal
 
     if num_classes == 50000 and start_index == 0:
         df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train_{}.csv'.format(num_classes)))
+    elif num_classes == 203094:
+        df_all = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train.csv'))
+        df = shuffle(df_all, random_state=1234)
     else:
         df_all = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train.csv'))
         df = shuffle(df_all[df_all.landmark_id.isin(set(classes))].copy().sort_values(by='id'), random_state=1234)
-        print(df.shape)
-        print(df.head())
+        #print(df.shape)
+        #print(df.head())
 
     split_index = int(len(df) * 0.95)
     train_df = df[:split_index]
