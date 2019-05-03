@@ -55,7 +55,7 @@ def ensemble_predict(args):
             #output = torch.sigmoid(model(x))
             outputs = []
             for model in models:
-                output = model(x)
+                output = model(x, None, True)
                 output = F.softmax(output, dim=1)
                 outputs.append(output)
             avg_ouput = torch.stack(outputs).mean(0)

@@ -92,9 +92,13 @@ def train(args):
     #ExponentialLR(optimizer, 0.9, last_epoch=-1) #CosineAnnealingLR(optimizer, 15, 1e-7) 
 
     if args.balanced:
-        _, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, start_index=args.start_index, batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num)
+        _, val_loader = get_balanced_train_val_loaders(
+            num_classes=args.num_classes, start_index=args.start_index,
+            batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num, other=args.other)
     else:
-        _, val_loader = get_train_val_loaders(num_classes=args.num_classes, start_index=args.start_index, batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num)
+        _, val_loader = get_train_val_loaders(
+            num_classes=args.num_classes, start_index=args.start_index,
+            batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num, other=args.other)
 
     best_top1_acc = 0.
 
@@ -118,9 +122,15 @@ def train(args):
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.balanced:
-            train_loader, val_loader = get_balanced_train_val_loaders(num_classes=args.num_classes, start_index=args.start_index, batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
+            train_loader, val_loader = get_balanced_train_val_loaders(
+                num_classes=args.num_classes, start_index=args.start_index,
+                batch_size=args.batch_size, dev_mode=args.dev_mode,
+                val_batch_size=args.val_batch_size, val_num=args.val_num, other=args.other)
         else:
-            train_loader, val_loader = get_train_val_loaders(num_classes=args.num_classes, start_index=args.start_index, batch_size=args.batch_size, dev_mode=args.dev_mode, val_batch_size=args.val_batch_size, val_num=args.val_num)
+            train_loader, val_loader = get_train_val_loaders(
+                num_classes=args.num_classes, start_index=args.start_index,
+                batch_size=args.batch_size, dev_mode=args.dev_mode,
+                val_batch_size=args.val_batch_size, val_num=args.val_num, other=args.other)
 
         train_loss = 0
 
@@ -255,7 +265,7 @@ def predict_softmax(args):
     model = model.cuda()
 
     model.eval()
-    test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
+    test_loader = get_test_loader(batch_size=args.val_batch_size, dev_mode=args.dev_mode)
 
     preds = None
     scores = None
@@ -291,7 +301,7 @@ def predict_softmax(args):
 
             print('{}/{}'.format(args.batch_size*(i+1), test_loader.num), end='\r')
 
-    classes, stoi = get_classes(num_classes=args.num_classes, start_index=args.start_index)
+    classes, stoi = get_classes(num_classes=args.num_classes, start_index=args.start_index, other=args.other)
     preds = preds.numpy()
     scores = scores.numpy()
     print(preds.shape)
@@ -302,7 +312,7 @@ def predict_softmax(args):
 
 def create_submission(args, predictions, scores, founds, outfile):
     meta = pd.read_csv(os.path.join(settings.DATA_DIR, 'test', 'test.csv'))
-    labels = ['{} {:.6f}'.format(i, j) for i, j in zip(predictions, scores)]
+    labels = ['{} {:.6f}'.format(i, j) if i != -1 else '' for i, j in zip(predictions, scores)]
 
     for i in range(len(labels)):
         if founds[i] == 0:
@@ -333,7 +343,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Landmark detection')
     parser.add_argument('--backbone', default='se_resnext50_32x4d', type=str, help='backbone')
     parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
-    parser.add_argument('--min_lr', default=0.0001, type=float, help='min learning rate')
+    parser.add_argument('--min_lr', default=0.00001, type=float, help='min learning rate')
     parser.add_argument('--batch_size', default=280, type=int, help='batch_size')
     parser.add_argument('--val_batch_size', default=1024, type=int, help='batch_size')
     parser.add_argument('--start_epoch', default=0, type=int, help='start epoch')
@@ -341,7 +351,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=200, type=int, help='epoch')
     parser.add_argument('--optim', default='SGD', choices=['SGD', 'Adam'], help='optimizer')
     parser.add_argument('--lrs', default='plateau', choices=['cosine', 'plateau'], help='LR sceduler')
-    parser.add_argument('--patience', default=6, type=int, help='lr scheduler patience')
+    parser.add_argument('--patience', default=5, type=int, help='lr scheduler patience')
     parser.add_argument('--factor', default=0.5, type=float, help='lr scheduler factor')
     parser.add_argument('--t_max', default=8, type=int, help='lr scheduler patience')
     parser.add_argument('--init_ckp', default=None, type=str, help='resume from checkpoint path')
@@ -350,6 +360,7 @@ if __name__ == '__main__':
     parser.add_argument('--start_index', type=int, default=0, help='class start index')
     parser.add_argument('--val', action='store_true')
     parser.add_argument('--dev_mode', action='store_true')
+    parser.add_argument('--other', action='store_true')
     parser.add_argument('--balanced', action='store_true')
     parser.add_argument('--focal_loss', action='store_true')
     parser.add_argument('--ckp_name', type=str, default='best_pretrained.pth',help='check point file name')

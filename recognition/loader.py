@@ -18,9 +18,11 @@ from albumentations import (
 
 DATA_DIR = settings.DATA_DIR
 
-def get_classes(num_classes, start_index=0):
+def get_classes(num_classes, start_index=0, other=False):
     df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'top203094_classes.csv'))
     classes = df.classes.values.tolist()[start_index: start_index+num_classes]
+    if other:
+        classes.append(-1)
     assert num_classes == len(classes)
     stoi = { classes[i]: i for i in range(len(classes))}
     return classes, stoi
@@ -80,11 +82,10 @@ def weak_augment(p=.8):
     ], p=p)
 
 class ImageDataset(data.Dataset):
-    def __init__(self, df, img_dir, stoi=None, train_mode=True, test_data=False, flat=False, input_size=256):
+    def __init__(self, df, img_dir, train_mode=True, test_data=False, flat=False, input_size=256):
         self.input_size = input_size
         self.df = df
         self.img_dir = img_dir
-        self.stoi = stoi
         self.train_mode = train_mode
         self.transforms = train_transforms
         self.test_data = test_data
@@ -137,7 +138,7 @@ class ImageDataset(data.Dataset):
         elif self.test_data:
             return img, 1
         else:
-            return img, self.stoi[row['landmark_id']]
+            return img, row['label']
 
     def __len__(self):
         return len(self.df)
@@ -150,25 +151,45 @@ class ImageDataset(data.Dataset):
             labels = torch.tensor([x[1] for x in batch])
             return imgs, labels
 
-def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=False, val_num=6000, val_batch_size=1024):
-    classes, stoi = get_classes(num_classes, start_index=start_index)
+def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=False, val_num=6000, val_batch_size=1024, other=False):
+    classes, stoi = get_classes(num_classes, start_index=start_index, other=other)
+
+    train_df = None
+    val_df = None
 
     if num_classes == 50000 and start_index == 0:
         df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train_{}.csv'.format(num_classes)))
+        df['label'] = df.landmark_id.map(lambda x: stoi[x])
     elif num_classes == 203094:
         df_all = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train.csv'))
         df = shuffle(df_all, random_state=1234)
+        df['label'] = df.landmark_id.map(lambda x: stoi[x])
     else:
         df_all = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train.csv'))
-        df = shuffle(df_all[df_all.landmark_id.isin(set(classes))].copy().sort_values(by='id'), random_state=1234)
-        #print(df.shape)
-        #print(df.head())
+        df_selected = shuffle(df_all[df_all.landmark_id.isin(set(classes))].copy().sort_values(by='id'), random_state=1234)
+        df_selected['label'] = df_selected.landmark_id.map(lambda x: stoi[x])
 
-    split_index = int(len(df) * 0.95)
-    train_df = df[:split_index]
-    val_df = df[split_index:]
-    if val_num is not None:
-        val_df = val_df[:val_num]
+        split_index = int(len(df_selected) * 0.95)
+        train_df = df_selected[:split_index]
+        val_df = df_selected[split_index:]
+        if val_num is not None:
+            val_df = val_df[:val_num]
+
+        df_other = df_all[~df_all.landmark_id.isin(set(classes))].sample(1000)
+        df_other['label'] = num_classes-1 # TODO handle this at prediction
+
+        train_df = pd.concat([train_df, df_other], sort=False)
+
+        #print(df.shape, df_selected.shape, df_other.shape)
+        #print(df.head(20))
+    
+
+    if train_df is None:
+        split_index = int(len(df) * 0.95)
+        train_df = df[:split_index]
+        val_df = df[split_index:]
+        if val_num is not None:
+            val_df = val_df[:val_num]
     
     if dev_mode:
         train_df = train_df[:10]
@@ -179,8 +200,8 @@ def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=Fal
     #print(val_df.head())
     #print(val_df.iloc[0])
 
-    train_set = ImageDataset(train_df, settings.TRAIN_IMG_DIR, stoi, train_mode=True)
-    val_set = ImageDataset(val_df, settings.TRAIN_IMG_DIR, stoi, train_mode=False)
+    train_set = ImageDataset(train_df, settings.TRAIN_IMG_DIR, train_mode=True)
+    val_set = ImageDataset(val_df, settings.TRAIN_IMG_DIR, train_mode=False)
     
     train_loader = data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=8, collate_fn=train_set.collate_fn, drop_last=True)
     train_loader.num = len(train_set)
@@ -195,10 +216,11 @@ def get_train_all_loader(batch_size=4, dev_mode=False):
     classes, stoi = get_classes(203094)
     print('loading training data')
     df = pd.read_csv(os.path.join(DATA_DIR, 'train', 'train.csv'))
+    df['label'] = df.landmark_id.map(lambda x: stoi[x])
     if dev_mode:
         df = df[:1000]
     print('data size:', df.shape)
-    ds = ImageDataset(df, settings.TRAIN_IMG_DIR, stoi, train_mode=False)
+    ds = ImageDataset(df, settings.TRAIN_IMG_DIR, train_mode=False)
     loader = data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=ds.collate_fn, drop_last=False)
     loader.num = len(df)
 
@@ -210,7 +232,7 @@ def get_test_loader(batch_size=1024, dev_mode=False, img_size=256):
     df = pd.read_csv(os.path.join(DATA_DIR, 'test', 'test.csv'))
     if dev_mode:
         df = df[:10]
-    test_set = ImageDataset(df, settings.TEST_IMG_DIR, stoi=None, train_mode=False, test_data=True, input_size=img_size)
+    test_set = ImageDataset(df, settings.TEST_IMG_DIR, train_mode=False, test_data=True, input_size=img_size)
     test_loader = data.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=test_set.collate_fn, drop_last=False)
     test_loader.num = len(test_set)
 
@@ -235,6 +257,6 @@ def test_index_loader():
         print(img.size(), img)
 
 if __name__ == '__main__':
-    #test_train_val_loader()
-    test_test_loader()
+    test_train_val_loader()
+    #test_test_loader()
     #test_index_loader()

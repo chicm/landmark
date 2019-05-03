@@ -11,6 +11,7 @@ from net.nasnet import nasnetalarge
 from net.inceptionresnetv2 import inceptionresnetv2
 from net.inceptionv4 import inceptionv4
 from net.dpn import dpn98, dpn107, dpn92, dpn131
+from net.MobileNetV2 import mobilenet
 
 from triplet_loss import global_loss, local_loss, TripletLoss
 import functional as LF
@@ -96,6 +97,10 @@ class LandmarkNet(nn.Module):
             pred = F.softmax(out, dim=1)
             top1, top10 = accuracy(pred, label)
             return loss, torch.tensor([top1]).cuda(), torch.tensor([top10]).cuda()
+
+    def freeze(self):
+        for param in self.backbone.parameters():
+            param.requires_grad = False
 
 class FeatureNet(nn.Module):
     def __init__(self, backbone_name, cls_model=None, suffix_name='FeatureNet'):
@@ -217,10 +222,11 @@ def create_model(args):
     #    suffix_name = 'LandmarkNetB'
     if args.init_ckp is not None:
         model = LandmarkNet(backbone_name=args.backbone, num_classes=args.init_num_classes, start_index=args.start_index, suffix_name=suffix_name)
+        print('loading {} ...'.format(args.init_ckp))
         model.load_state_dict(torch.load(args.init_ckp))
         if args.init_num_classes != args.num_classes:
             model.logit = nn.Linear(model.ftr_num, args.num_classes)
-            model.name = '{}_{}_{}'.format(suffix_name, args.backbone, args.num_classes)
+            model.name = '{}_{}_{}_{}'.format(suffix_name, args.backbone, args.start_index, args.num_classes)
     else:
         model = LandmarkNet(backbone_name=args.backbone, num_classes=args.num_classes, start_index=args.start_index, suffix_name=suffix_name)
 
@@ -238,6 +244,8 @@ def create_model(args):
     if os.path.exists(model_file):
         print('loading {}...'.format(model_file))
         model.load_state_dict(torch.load(model_file))
+
+    #model.freeze()
     
     return model, model_file
 
