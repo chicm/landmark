@@ -13,6 +13,7 @@ from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR, _LRSchedu
 import settings
 from loader import get_train_val_loaders, get_test_loader, get_classes
 from balanced_loader import get_balanced_train_val_loaders
+from utils import accuracy
 import cv2
 from models import LandmarkNet, create_model
 from torch.nn import DataParallel
@@ -190,9 +191,6 @@ def get_lrs(optimizer):
 
 def validate(args, model, val_loader):
     model.eval()
-    #print('validating...')
-
-    #total_num = 0
     top1_corrects, corrects = 0, 0
     total_loss = 0.
     n_batches = 0
@@ -200,63 +198,58 @@ def validate(args, model, val_loader):
         for img, target in val_loader:
             n_batches += 1
             img, target = img.cuda(), target.cuda()
-            #print(img.size(), img)
             loss, top1, top10 = model(img, target)
             loss, top1, top10 = loss.sum() / img.size(0), top1.sum().item(), top10.sum().item()
-            #loss = criterion(args, output, target)
             total_loss += loss.item()
 
-            #print(output.size(), output)
-            #break
-            
-            #preds = output.max(1, keepdim=True)[1]
-            #corrects += preds.eq(target.view_as(preds)).sum().item()
-            #output = F.softmax(output, dim=1)
-            #top1, top10 = accuracy(output, target)
             top1_corrects += top1
             corrects += top10
-            #total_num += len(img)
-    #print('top 10 corrects:', corrects)
-    #print('top 1 corrects:', top1_corrects)
             
     top10_acc = corrects / val_loader.num
     top1_acc = top1_corrects / val_loader.num
-    #n_batches = val_loader.num // args.batch_size if val_loader.num % args.batch_size == 0 else val_loader.num // args.batch_size + 1
 
     return top10_acc, top1_acc, total_loss / n_batches
 
-def predict_top3(args):
+def validate_tta(args):
     model, _ = create_model(args)
+    if torch.cuda.device_count() > 1:
+        model = DataParallel(model)
     model = model.cuda()
     model.eval()
-    test_loader = get_test_loader(args, batch_size=args.batch_size, dev_mode=args.dev_mode)
 
-    preds = None
+    val_loaders = []
+
+    for i in range(args.tta_num):
+        _, val_loader = get_train_val_loaders(
+            num_classes=args.num_classes, start_index=args.start_index,
+            batch_size=args.batch_size, val_batch_size=args.val_batch_size, val_num=args.val_num, other=args.other, tta_index=i)
+        val_loaders.append(val_loader)
+
+    
     with torch.no_grad():
-        for i, x in enumerate(test_loader):
-            x = x.cuda()
-            #output = torch.sigmoid(model(x))
-            output, _ = model(x)
-            output = F.softmax(output, dim=1)
-            _, pred = output.topk(3, 1, True, True)
+        outputs = []
+        for tta_data in zip(*val_loaders):
+            #print('data:', len(tta_data), len(tta_data[0]), tta_data[0][0].size())
+            #print()
+            #break
+            batch_output = []
+            #targets = None
+            for img, target in tta_data:
+                img = img.cuda()
+                output = model(img, None, True)
+                batch_output.append(output.detach().cpu())
+                #targets = target
+            outputs.append(torch.stack(batch_output).mean(0))
+        outputs = torch.cat(outputs, 0)
+        pred = F.softmax(outputs, dim=1)
+        #score, pred = outputs.max(1)
+        top1, top10 = accuracy(pred,  torch.tensor(val_loaders[0].labels))
 
-            if preds is None:
-                preds = pred.cpu()
-            else:
-                preds = torch.cat([preds, pred.cpu()], 0)
-            print('{}/{}'.format(args.batch_size*(i+1), test_loader.num), end='\r')
+        top1, top10 = top1/val_loaders[0].num, top10/val_loaders[0].num
+        print('top1:', top1)
+        print('top10:', top10)
+    
 
-    classes, _ = get_classes(args.cls_type, args.start_index, args.end_index)
-    label_names = []
-    preds = preds.numpy()
-    print(preds.shape)
-    for row in preds:
-        label_names.append(' '.join([classes[i] for i in row]))
-    if args.dev_mode:
-        print(len(label_names))
-        print(label_names)
-
-    create_submission(args, label_names, args.sub_file)
 
 def predict_softmax(args):
     model, _ = create_model(args)
@@ -267,47 +260,27 @@ def predict_softmax(args):
     model.eval()
     test_loader = get_test_loader(batch_size=args.val_batch_size, dev_mode=args.dev_mode)
 
-    preds = None
-    scores = None
-    founds = None
+    preds, scores, founds = [], [], []
     with torch.no_grad():
         for i, (x, found) in enumerate(test_loader):
             x = x.cuda()
-            #output = torch.sigmoid(model(x))
-            #print(x[0, 0, :])
             output = model(x, None, True)
             output = F.softmax(output, dim=1)
-            #pred = (output > 0.03).byte()  #  use threshold
-            #preds = output.max(1, keepdim=True)[1]
-            #print(output)
-            #break
             score, pred = output.max(1)
-            #print(pred.size())
 
-            if preds is None:
-                preds = pred.cpu()
-            else:
-                preds = torch.cat([preds, pred.cpu()], 0)
-            
-            if scores is None:
-                scores = score.cpu()
-            else:
-                scores = torch.cat([scores, score.cpu()], 0)
-
-            if founds is None:
-                founds = found
-            else:
-                founds = torch.cat([founds, found], 0)
-
+            preds.append(pred.cpu())
+            scores.append(score.cpu())
+            founds.append(found)
             print('{}/{}'.format(args.batch_size*(i+1), test_loader.num), end='\r')
+    
+    preds = torch.cat(preds, 0).numpy()
+    scores = torch.cat(scores, 0).numpy()
+    founds = torch.cat(founds, 0).numpy()
 
     classes, stoi = get_classes(num_classes=args.num_classes, start_index=args.start_index, other=args.other)
-    preds = preds.numpy()
-    scores = scores.numpy()
     print(preds.shape)
 
     pred_labels = [classes[i] for i in preds]
-    
     create_submission(args, pred_labels, scores, founds, args.sub_file)
 
 def create_submission(args, predictions, scores, founds, outfile):
@@ -324,20 +297,6 @@ def create_submission(args, predictions, scores, founds, outfile):
     meta['landmarks'] = labels
     meta.to_csv(outfile, index=False, columns=['id', 'landmarks'])
 
-def test_model(args):
-    model, _ = create_model(args)
-    model.cuda()
-
-    
-    torch.manual_seed(1234)
-    x = torch.randn(2,3, 256,256).cuda()
-    
-    model = model.eval()
-    for i in range (2):
-        #model.eval()
-        print(x)
-        y = model(x)
-        print(y)
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Landmark detection')
@@ -359,6 +318,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_classes', type=int, default=50000, help='init num classes')
     parser.add_argument('--start_index', type=int, default=0, help='class start index')
     parser.add_argument('--val', action='store_true')
+    parser.add_argument('--val_tta', action='store_true')
+    parser.add_argument('--tta_num', default=6, type=int, help='tta_num')
     parser.add_argument('--dev_mode', action='store_true')
     parser.add_argument('--other', action='store_true')
     parser.add_argument('--balanced', action='store_true')
@@ -382,5 +343,7 @@ if __name__ == '__main__':
 
     if args.predict:
         predict_softmax(args)
+    elif args.val_tta:
+        validate_tta(args)
     else:
         train(args)

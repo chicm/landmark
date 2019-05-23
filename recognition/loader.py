@@ -16,6 +16,10 @@ from albumentations import (
     IAASharpen, IAAEmboss, RandomContrast, RandomBrightness, Flip, OneOf, Compose, RandomGamma, ElasticTransform, ChannelShuffle,RGBShift, Rotate
 )
 
+class Rotate90(RandomRotate90):
+    def apply(self, img, factor=1, **params):
+        return np.ascontiguousarray(np.rot90(img, factor))
+
 DATA_DIR = settings.DATA_DIR
 
 def get_classes(num_classes, start_index=0, other=False):
@@ -81,8 +85,28 @@ def weak_augment(p=.8):
         #HueSaturationValue(p=.33)
     ], p=p)
 
+def get_tta_aug_old(tta_index=0):
+    if tta_index == 0:
+        return Compose([Resize(256, 256)], p=1.)
+    else:
+        return Compose([RandomSizedCrop((200, 250), 256, 256, p=1.)], p=1.0)
+
+def get_tta_aug(tta_index=None):
+    tta_augs = {
+        1: [HorizontalFlip(always_apply=True)],
+        2: [VerticalFlip(always_apply=True)],
+        3: [HorizontalFlip(always_apply=True),VerticalFlip(always_apply=True)],
+        4: [Rotate90(always_apply=True)],
+        5: [Rotate90(always_apply=True), HorizontalFlip(always_apply=True)],
+        6: [VerticalFlip(always_apply=True), Rotate90(always_apply=True)],
+        7: [HorizontalFlip(always_apply=True),VerticalFlip(always_apply=True), Rotate90(always_apply=True)],
+    }
+    
+    return Compose(tta_augs[tta_index], p=1.0)
+
+
 class ImageDataset(data.Dataset):
-    def __init__(self, df, img_dir, train_mode=True, test_data=False, flat=False, input_size=256):
+    def __init__(self, df, img_dir, train_mode=True, test_data=False, flat=False, input_size=256, tta_index=None):
         self.input_size = input_size
         self.df = df
         self.img_dir = img_dir
@@ -90,17 +114,9 @@ class ImageDataset(data.Dataset):
         self.transforms = train_transforms
         self.test_data = test_data
         self.flat = flat
+        self.tta_index = tta_index
 
-    def __getitem__(self, index):
-        row = self.df.iloc[index]
-        try:
-            fn = get_filename(row['id'], self.img_dir, self.test_data, self.flat)
-        except AssertionError:
-            if self.flat:
-                raise
-            return torch.zeros(3, self.input_size, self.input_size), 0
-        #print(fn)
-        
+    def get_img(self, fn):
         # open with PIL and transform
         #img = Image.open(fn, 'r')
         #img = img.convert('RGB')
@@ -112,6 +128,9 @@ class ImageDataset(data.Dataset):
         if self.train_mode:
             #aug = img_augment(p=0.8)
             aug = weak_augment(p=0.8)
+            img = aug(image=img)['image']
+        elif self.tta_index is not None and self.tta_index > 0:
+            aug = get_tta_aug(self.tta_index)
             img = aug(image=img)['image']
 
         #if self.input_size != 256:
@@ -132,6 +151,19 @@ class ImageDataset(data.Dataset):
         #img[1, :,:,] = (img[1, :,:,] - mean[1]) / std[1]
         #img[2, :,:,] = (img[2, :,:,] - mean[2]) / std[2]
         #img = torch.tensor(img)
+        return img
+
+    def __getitem__(self, index):
+        row = self.df.iloc[index]
+        try:
+            fn = get_filename(row['id'], self.img_dir, self.test_data, self.flat)
+        except AssertionError:
+            if self.flat:
+                raise
+            return torch.zeros(3, self.input_size, self.input_size), 0
+        #print(fn)
+        
+        img = self.get_img(fn)
         
         if self.flat:
             return img
@@ -151,7 +183,7 @@ class ImageDataset(data.Dataset):
             labels = torch.tensor([x[1] for x in batch])
             return imgs, labels
 
-def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=False, val_num=6000, val_batch_size=1024, other=False):
+def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=False, val_num=6000, val_batch_size=1024, other=False, tta_index=None):
     classes, stoi = get_classes(num_classes, start_index=start_index, other=other)
 
     train_df = None
@@ -175,10 +207,11 @@ def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=Fal
         if val_num is not None:
             val_df = val_df[:val_num]
 
-        df_other = df_all[~df_all.landmark_id.isin(set(classes))].sample(1000)
-        df_other['label'] = num_classes-1 # TODO handle this at prediction
+        if other:
+            df_other = df_all[~df_all.landmark_id.isin(set(classes))].sample(1000)
+            df_other['label'] = num_classes-1 # TODO handle this at prediction
 
-        train_df = pd.concat([train_df, df_other], sort=False)
+            train_df = pd.concat([train_df, df_other], sort=False)
 
         #print(df.shape, df_selected.shape, df_other.shape)
         #print(df.head(20))
@@ -201,13 +234,14 @@ def get_train_val_loaders(num_classes, start_index=0, batch_size=4, dev_mode=Fal
     #print(val_df.iloc[0])
 
     train_set = ImageDataset(train_df, settings.TRAIN_IMG_DIR, train_mode=True)
-    val_set = ImageDataset(val_df, settings.TRAIN_IMG_DIR, train_mode=False)
+    val_set = ImageDataset(val_df, settings.TRAIN_IMG_DIR, train_mode=False, tta_index=tta_index)
     
     train_loader = data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=8, collate_fn=train_set.collate_fn, drop_last=True)
     train_loader.num = len(train_set)
 
     val_loader = data.DataLoader(val_set, batch_size=val_batch_size, shuffle=False, num_workers=8, collate_fn=val_set.collate_fn, drop_last=False)
     val_loader.num = len(val_set)
+    val_loader.labels = val_df.label.values
 
     return train_loader, val_loader
 
@@ -240,6 +274,8 @@ def get_test_loader(batch_size=1024, dev_mode=False, img_size=256):
 
 def test_train_val_loader():
     train_loader, val_loader = get_train_val_loaders(50000, 50000, dev_mode=True)
+    print(val_loader.labels.shape)
+    print(val_loader.labels[:5])
     for img, label in val_loader:
         print(img.size(), img)
         print(label)
