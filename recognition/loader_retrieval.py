@@ -22,8 +22,11 @@ DATA_DIR = settings_retrieval.DATA_DIR
 
 exclude_ids = set([1307, 2204, 2216, 2952, 3022, 4753, 6131, 6798, 8615, 9208, 9519, 10151, 14134, 14951])
 
-def get_filename(img_id, img_dir):
-    return os.path.join(img_dir, '{}.jpg'.format(img_id))
+def get_filename(img_id, img_dir, stage2):
+    if stage2:
+        return os.path.join(img_dir, img_id[0], img_id[1], img_id[2], '{}.jpg'.format(img_id))
+    else:
+        return os.path.join(img_dir, '{}.jpg'.format(img_id))
 
 def img_augment(p=1.):
     return Compose([
@@ -48,7 +51,7 @@ def img_augment(p=1.):
 #    return Compose([Resize(224, 224)], p=1.)
 
 class ImageDataset(data.Dataset):
-    def __init__(self, df, invert_dict, img_dir, train_mode=True, test_data=False):
+    def __init__(self, df, invert_dict, img_dir, train_mode=True, test_data=False, stage2=False):
         #self.input_size = 224
         self.df = df
         self.invert_dict = invert_dict
@@ -58,11 +61,14 @@ class ImageDataset(data.Dataset):
         #self.num_labels = 14952 #len(self.invert_dict)
         if train_mode:
             self.train_labels = list(invert_dict.keys())
+        self.stage2 = stage2
 
     def get_img(self, img_id):
-        fn = get_filename(img_id, self.img_dir)
+        fn = get_filename(img_id, self.img_dir, self.stage2)
         # cv2 and albumentations
         img = cv2.imread(fn)
+        if self.stage2:
+            img = cv2.resize(img, (256, 256))
         #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if self.train_mode:
             aug = img_augment(p=1.)
@@ -177,6 +183,18 @@ def get_retrieval_index_loader(batch_size=1024, dev_mode=False):
 
     return loader
 
+def get_retrieval_stage2_index_loader(batch_size=1024, dev_mode=False):
+    df = pd.read_csv(os.path.join(settings_retrieval.DATA_DIR, 'stage2', 'index.csv'))
+    img_dir = os.path.join(settings_retrieval.DATA_DIR, 'stage2', 'index')
+    if dev_mode:
+        df = df[:1000]
+    ds = ImageDataset(df, None, img_dir, train_mode=False, test_data=True, stage2=True)
+    loader = data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=ds.collate_fn, drop_last=False)
+    loader.num = len(ds)
+
+    return loader
+
+
 def test_train_val_loader():
     train_loader, val_loader = get_train_val_loaders(dev_mode=True, batch_size=2)
     for img, label in train_loader:
@@ -189,7 +207,15 @@ def test_index_loader():
     for img in loader:
         print(img.size(), img)
 
+def test_stage2_index_loader():
+    loader = get_retrieval_stage2_index_loader(batch_size=4, dev_mode=True)
+    for img in loader:
+        print(img.size(), img)
+
+
 if __name__ == '__main__':
     #test_train_val_loader()
     #test_test_loader()
-    test_index_loader()
+    #test_index_loader()
+    test_stage2_index_loader()
+    #test_stage2_test_loader()

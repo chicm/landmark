@@ -31,7 +31,9 @@ def get_classes(num_classes, start_index=0, other=False):
     stoi = { classes[i]: i for i in range(len(classes))}
     return classes, stoi
 
-def get_filename(img_id, img_dir, test_data=False, flat=False):
+def get_filename(img_id, img_dir, test_data=False, flat=False, stage2=False):
+    if stage2:
+        return os.path.join(img_dir, img_id[0], img_id[1], img_id[2], '{}.jpg'.format(img_id))
     if test_data:
         for i in range(10):
             fn = os.path.join(img_dir, str(i), '{}.jpg'.format(img_id))
@@ -106,7 +108,7 @@ def get_tta_aug(tta_index=None):
 
 
 class ImageDataset(data.Dataset):
-    def __init__(self, df, img_dir, train_mode=True, test_data=False, flat=False, input_size=256, tta_index=None):
+    def __init__(self, df, img_dir, train_mode=True, test_data=False, flat=False, input_size=256, tta_index=None, stage2=False):
         self.input_size = input_size
         self.df = df
         self.img_dir = img_dir
@@ -115,6 +117,7 @@ class ImageDataset(data.Dataset):
         self.test_data = test_data
         self.flat = flat
         self.tta_index = tta_index
+        self.stage2 = stage2
 
     def get_img(self, fn):
         # open with PIL and transform
@@ -125,7 +128,9 @@ class ImageDataset(data.Dataset):
         # cv2 and albumentations
         img = cv2.imread(fn)
         #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if self.train_mode:
+        if self.stage2:
+            img = cv2.resize(img, (256, 256))
+        elif self.train_mode:
             #aug = img_augment(p=0.8)
             aug = weak_augment(p=0.8)
             img = aug(image=img)['image']
@@ -156,9 +161,9 @@ class ImageDataset(data.Dataset):
     def __getitem__(self, index):
         row = self.df.iloc[index]
         try:
-            fn = get_filename(row['id'], self.img_dir, self.test_data, self.flat)
+            fn = get_filename(row['id'], self.img_dir, self.test_data, self.flat, self.stage2)
         except AssertionError:
-            if self.flat:
+            if self.flat or self.stage2:
                 raise
             return torch.zeros(3, self.input_size, self.input_size), 0
         #print(fn)
@@ -272,6 +277,19 @@ def get_test_loader(batch_size=1024, dev_mode=False, img_size=256):
 
     return test_loader
 
+def get_stage2_test_loader(batch_size=1024, dev_mode=False):
+    df = pd.read_csv(os.path.join(settings_retrieval.DATA_DIR, 'stage2', 'test.csv'))
+    img_dir = os.path.join(settings_retrieval.DATA_DIR, 'stage2', 'test')
+    if dev_mode:
+        df = df[:100]
+    ds = ImageDataset(df, img_dir, train_mode=False, test_data=True, stage2=True)
+    loader = data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=ds.collate_fn, drop_last=False)
+    loader.num = len(ds)
+
+    return loader
+
+
+
 def test_train_val_loader():
     train_loader, val_loader = get_train_val_loaders(50000, 50000, dev_mode=True)
     print(val_loader.labels.shape)
@@ -292,7 +310,14 @@ def test_index_loader():
     for img in loader:
         print(img.size(), img)
 
+def test_stage2_test_loader():
+    loader = get_stage2_test_loader(batch_size=4, dev_mode=True)
+    for img, _ in loader:
+        print(img.size(), img)
+
+
 if __name__ == '__main__':
-    test_train_val_loader()
+    #test_train_val_loader()
     #test_test_loader()
     #test_index_loader()
+    test_stage2_test_loader()

@@ -5,8 +5,8 @@ import argparse
 import torch
 from torch.nn import DataParallel
 from models import FeatureNet, create_model, FeatureNetV2, FeatureNetV1
-from loader import get_train_all_loader, get_test_loader
-from loader_retrieval import get_retrieval_index_loader
+from loader import get_train_all_loader, get_test_loader, get_stage2_test_loader
+from loader_retrieval import get_retrieval_index_loader, get_retrieval_stage2_index_loader
 import faiss
 from tqdm import tqdm
 import time
@@ -15,7 +15,7 @@ import settings
 import settings_retrieval
 
 def create_retrieval_model(args):
-    model = FeatureNetV2(args.backbone, cls_model=None)
+    model = FeatureNet(args.backbone, cls_model=None)
     
     if not os.path.exists(args.ckp):
         raise AssertionError('ckp not found')
@@ -56,8 +56,10 @@ def build_train_index(args):
 def build_retrieval_index(args):
     model = create_feature_model(args)
 
-    retrieval_index_loader = get_retrieval_index_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
-    index_fn = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval_v1'.format(model.name))
+    #retrieval_index_loader = get_retrieval_index_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
+    print('building index...')
+    retrieval_index_loader = get_retrieval_stage2_index_loader(batch_size=args.batch_size, dev_mode=args.dev_mode)
+    index_fn = os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval'.format(model.name))
     build_index(args, model, retrieval_index_loader, False, index_fn)
 
 
@@ -217,7 +219,8 @@ def pred_retrieval_featurenet(args):
     model = create_feature_model(args)
     #model = create_retrieval_model(args)
 
-    test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode, img_size=256) #224
+    #test_loader = get_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode, img_size=256) #224
+    test_loader = get_stage2_test_loader(batch_size=args.batch_size, dev_mode=args.dev_mode) #224
 
     global_feats = []
     founds = []
@@ -236,7 +239,7 @@ def pred_retrieval_featurenet(args):
     print(global_feats.shape, founds.shape)
 
     index_fn = args.index_fn #os.path.join(settings_retrieval.VECTOR_DIR, '{}.index_retrieval'.format(model.name))
-    print('loading index...')
+    print('loading index...', index_fn)
 
     index = faiss.read_index(index_fn)
     print('searching...')
@@ -253,7 +256,24 @@ def pred_retrieval_featurenet(args):
     #print(pred_labels)
     #scores = [0.5] * xb.shape[0]
     
-    create_retrieval_submission(args, I, founds, args.sub_file)
+    #create_retrieval_submission(args, I, founds, args.sub_file)
+    create_retrieval_submission_stage2(args, I, founds, args.sub_file)
+
+def create_retrieval_submission_stage2(args, I, founds, outfile):
+    df = pd.read_csv(os.path.join(settings_retrieval.DATA_DIR, 'stage2', 'index.csv'))
+    meta = pd.read_csv(os.path.join(settings_retrieval.DATA_DIR, 'stage2', 'test.csv'))  # use same test data as recognition
+
+    labels = [' '.join([str(i) for i in df.iloc[x].id.values]) for x in I]
+
+    for i in range(len(labels)):
+        if founds[i] == 0:
+            labels[i] = ''
+
+    if args.dev_mode:
+        meta = meta.iloc[:len(I)]  # for dev mode
+        print(labels[:4])
+    meta['images'] = labels
+    meta.to_csv(outfile, index=False, columns=['id', 'images'])
 
 
 def create_retrieval_submission(args, I, founds, outfile):
